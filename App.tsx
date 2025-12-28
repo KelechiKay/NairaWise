@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   PlayerStats, 
   Scenario, 
@@ -65,7 +65,7 @@ const App: React.FC = () => {
   const [portfolio, setPortfolio] = useState<PortfolioItem[]>([]);
   const [marketNews, setMarketNews] = useState<MarketNews[]>([]);
 
-  // Restore session from localStorage if available
+  // Restore session
   useEffect(() => {
     const saved = localStorage.getItem('nairawise_session');
     if (saved) {
@@ -193,25 +193,30 @@ const App: React.FC = () => {
   const proceedToNextWeek = () => {
     setNotifications([]);
     if (nextScenario) {
-      setCurrentScenario(nextScenario);
+      const current = nextScenario;
+      setCurrentScenario(current);
       setLastConsequence(null);
       setNextScenario(null);
       setActiveTab('scenario');
-      updateMarketPrices(nextScenario.marketEvent);
+      updateMarketPrices(current.marketEvent);
       prefetchScenario(stats, history);
     } else {
       setStatus(GameStatus.LOADING);
       const checkAndProceed = setInterval(() => {
-        if (nextScenario) {
-          setCurrentScenario(nextScenario);
-          setLastConsequence(null);
-          setNextScenario(null);
-          setStatus(GameStatus.PLAYING);
-          setActiveTab('scenario');
-          updateMarketPrices(nextScenario.marketEvent);
-          prefetchScenario(stats, history);
-          clearInterval(checkAndProceed);
-        }
+        // Explicitly check for nextScenario within the closure
+        setNextScenario(prev => {
+           if (prev) {
+             setCurrentScenario(prev);
+             setLastConsequence(null);
+             setStatus(GameStatus.PLAYING);
+             setActiveTab('scenario');
+             updateMarketPrices(prev.marketEvent);
+             prefetchScenario(stats, history);
+             clearInterval(checkAndProceed);
+             return null;
+           }
+           return prev;
+        });
       }, 500);
     }
   };

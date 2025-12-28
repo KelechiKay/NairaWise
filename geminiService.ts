@@ -2,7 +2,9 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { PlayerStats, Scenario, GameLog } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+// Explicitly cast process.env to any to bypass strict node type checking if needed
+const apiKey = (process.env as any).API_KEY || '';
+const ai = new GoogleGenAI({ apiKey });
 
 export const getNextScenario = async (
   stats: PlayerStats,
@@ -78,7 +80,8 @@ export const getNextScenario = async (
     }
   });
 
-  return JSON.parse(response.text);
+  const text = response.text || "{}";
+  return JSON.parse(text);
 };
 
 export const getEndGameAnalysis = async (stats: PlayerStats, history: GameLog[]) => {
@@ -96,5 +99,5 @@ export const getEndGameAnalysis = async (stats: PlayerStats, history: GameLog[])
     }
   });
 
-  return response.text;
+  return response.text || "You did your best, but the market is tough. Keep learning!";
 };
