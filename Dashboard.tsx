@@ -11,7 +11,10 @@ import {
   Target,
   Trophy,
   MapPin,
-  Zap
+  Zap,
+  Users,
+  Baby,
+  Banknote
 } from 'lucide-react';
 
 interface DashboardProps {
@@ -71,7 +74,18 @@ const Dashboard: React.FC<DashboardProps> = ({ stats, goals, netAssets }) => {
           <div className="p-4 rounded-2xl bg-slate-900"><Briefcase className="w-7 h-7 text-white" /></div>
           <div className="overflow-hidden">
             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">{stats.name}</p>
-            <p className="text-sm font-black text-slate-900 truncate uppercase">{stats.job}</p>
+            <div className="flex flex-col">
+              <p className="text-sm font-black text-slate-900 truncate uppercase flex items-center gap-2">
+                {stats.job} 
+                <span className="text-[8px] bg-indigo-50 text-indigo-500 px-2 py-0.5 rounded-full border border-indigo-100 flex items-center gap-1">
+                  {stats.maritalStatus === 'married' ? <Users size={10} /> : null}
+                  {stats.maritalStatus === 'married' ? `Married (${stats.numberOfKids} Kids)` : 'Single'}
+                </span>
+              </p>
+              <p className="text-[10px] font-bold text-emerald-600 uppercase flex items-center gap-1 mt-0.5">
+                <Banknote size={10} /> ₦{stats.salary.toLocaleString()} / Month
+              </p>
+            </div>
           </div>
         </div>
         <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-100 flex items-center gap-5">

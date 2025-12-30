@@ -20,6 +20,8 @@ export const getNextScenario = async (
     PLAYER PERSONALIZATION:
     - NAME: ${stats.name}
     - JOB: ${stats.job}
+    - MARITAL STATUS: ${stats.maritalStatus}
+    - NUMBER OF KIDS: ${stats.numberOfKids}
     - MONTHLY INCOME: ₦${stats.salary.toLocaleString()}
     - CURRENT BALANCE: ₦${stats.balance.toLocaleString()}
     - SAVINGS/INVESTMENTS: ₦${stats.savings.toLocaleString()}
@@ -29,15 +31,14 @@ export const getNextScenario = async (
 
     SCENARIO GUIDELINES:
     1. Financial Scaling: THE FINANCIAL IMPACTS MUST BE REALISTIC TO THE PLAYER'S INCOME.
-    2. Professional Flavor: Scenarios should relate to being a ${stats.job} or living in ${stats.city}.
-    3. Investment Opportunities: At least one choice should occasionally offer to BUY STOCKS, INVEST IN MUTUAL FUNDS, or PUT MONEY IN SAVINGS. 
-       - If they invest, 'balance' goes down and 'savings' goes up.
+    2. Investment Logic: Treat individual STOCKS and MUTUAL FUNDS as the primary wealth-building tools. 
+    3. Family Dynamics: If married or has kids, incorporate scenarios about school fees, family events, or spouse's financial needs.
     4. Cultural Context: Use specific economic conditions of Nigeria.
     5. Slang: Use localized Nigerian Pidgin naturally.
-    6. Choices: PROVIDE EXACTLY 4 DISTINCT CHOICES covering these archetypes:
-       - Prudent (Saving/Investing/Long-term)
-       - Social (Family/Black Tax/Status)
-       - Risky (Gambling/Volatile business)
+    6. Choices: PROVIDE EXACTLY 4 DISTINCT CHOICES:
+       - Prudent (Saving/Mutual Fund Investment)
+       - Social/Family (Family/Black Tax/Status/School Fees)
+       - Risky (Individual Stock Speculation/Betting)
        - Opportunistic (Quick flip/Side hustle)
 
     RECENT ACTIONS:
@@ -83,7 +84,7 @@ export const getNextScenario = async (
         },
         required: ["title", "description", "choices", "imageTheme"]
       },
-      systemInstruction: "You are NairaWise, a financial RPG engine. The game is indefinite. Bankruptcy happens if balance reaches zero. Provide 4 choices including investment options where relevant."
+      systemInstruction: "You are NairaWise. Treat Equities and Mutual Funds as the core of your investment advice. The user sees them in a unified 'Invest' tab. Consider their family size and status."
     }
   });
 
@@ -96,12 +97,13 @@ export const getEndGameAnalysis = async (stats: PlayerStats, history: GameLog[])
     The player has gone bankrupt (Sapa has won). 
     FINAL STATS:
     - Name: ${stats.name}
+    - Family: ${stats.maritalStatus === 'married' ? `Married with ${stats.numberOfKids} kids` : 'Single'}
     - Job: ${stats.job}
     - Week reached: ${stats.currentWeek}
     - Total Wealth (Peak): ₦${(stats.balance + stats.savings).toLocaleString()}
     - Debt: ₦${stats.debt.toLocaleString()}
     
-    Review their journey. Be witty, wise, and slightly critical but encouraging. Use Nigerian slang. Tell them why they failed and give 3 tips for their next run.
+    Review their journey. Evaluate their use of Stocks vs Mutual Funds and how their family life impacted their finances. Be witty and wise. Use Nigerian slang.
   `;
   const response = await ai.models.generateContent({
     model: 'gemini-3-flash-preview',

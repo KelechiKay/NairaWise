@@ -11,6 +11,8 @@ export interface PlayerStats {
   job: string;
   city: string;
   challenge: string;
+  maritalStatus: 'single' | 'married';
+  numberOfKids: number;
 }
 
 export interface LeaderboardEntry {
@@ -36,6 +38,8 @@ export interface Stock {
   price: number;
   history: number[];
   sector: string;
+  assetType: 'stock' | 'mutual_fund';
+  description?: string;
 }
 
 export interface PortfolioItem {
@@ -61,6 +65,7 @@ export interface Choice {
     debt: number;
     happiness: number;
   };
+  investmentId?: string; // Optional reference to an asset in the market
 }
 
 export interface Scenario {
