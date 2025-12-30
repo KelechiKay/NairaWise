@@ -13,6 +13,15 @@ export interface PlayerStats {
   challenge: string;
 }
 
+export interface LeaderboardEntry {
+  name: string;
+  city: string;
+  netAssets: number;
+  week: number;
+  rank: string;
+  timestamp: number;
+}
+
 export interface Goal {
   id: string;
   title: string;
