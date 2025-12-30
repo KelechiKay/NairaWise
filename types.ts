@@ -15,15 +15,6 @@ export interface PlayerStats {
   numberOfKids: number;
 }
 
-export interface LeaderboardEntry {
-  name: string;
-  city: string;
-  netAssets: number;
-  week: number;
-  rank: string;
-  timestamp: number;
-}
-
 export interface Goal {
   id: string;
   title: string;
@@ -52,7 +43,7 @@ export interface PortfolioItem {
 
 export interface MarketNews {
   headline: string;
-  impact: string; // "positive", "negative", "neutral"
+  impact: 'positive' | 'negative' | 'neutral';
   stockId?: string;
 }
 
@@ -65,7 +56,7 @@ export interface Choice {
     debt: number;
     happiness: number;
   };
-  investmentId?: string; // Optional reference to an asset in the market
+  investmentId?: string;
 }
 
 export interface Scenario {

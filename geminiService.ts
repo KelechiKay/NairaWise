@@ -29,17 +29,22 @@ export const getNextScenario = async (
     - GAME PROGRESS: Week ${stats.currentWeek} (${phase})
     - CHALLENGE: ${stats.challenge}
 
+    AVAILABLE ASSETS (IDs):
+    - STOCKS: "lagos-gas", "nairatech", "obudu-agri"
+    - MUTUAL FUNDS: "naija-balanced", "arm-growth", "fgn-bond-fund"
+
     SCENARIO GUIDELINES:
     1. Financial Scaling: THE FINANCIAL IMPACTS MUST BE REALISTIC TO THE PLAYER'S INCOME.
     2. Investment Logic: Treat individual STOCKS and MUTUAL FUNDS as the primary wealth-building tools. 
     3. Family Dynamics: If married or has kids, incorporate scenarios about school fees, family events, or spouse's financial needs.
     4. Cultural Context: Use specific economic conditions of Nigeria.
     5. Slang: Use localized Nigerian Pidgin naturally.
-    6. Choices: PROVIDE EXACTLY 4 DISTINCT CHOICES:
-       - Prudent (Saving/Mutual Fund Investment)
-       - Social/Family (Family/Black Tax/Status/School Fees)
-       - Risky (Individual Stock Speculation/Betting)
-       - Opportunistic (Quick flip/Side hustle)
+    6. Choices: PROVIDE EXACTLY 5 DISTINCT CHOICES:
+       - Choice 1: Survival/Prudent (Cost-cutting)
+       - Choice 2: Social/Family (Family/Black Tax/Status/School Fees)
+       - Choice 3: Equity Investment (Must include "investmentId" from STOCKS list)
+       - Choice 4: Mutual Fund Investment (Must include "investmentId" from MUTUAL FUNDS list)
+       - Choice 5: High Risk/Opportunistic (e.g., Betting, Side Hustle, or Crypto-scam)
 
     RECENT ACTIONS:
     ${historyContext}
@@ -60,13 +65,14 @@ export const getNextScenario = async (
           imageTheme: { type: Type.STRING },
           choices: {
             type: Type.ARRAY,
-            minItems: 4,
-            maxItems: 4,
+            minItems: 5,
+            maxItems: 5,
             items: {
               type: Type.OBJECT,
               properties: {
                 text: { type: Type.STRING },
                 consequence: { type: Type.STRING },
+                investmentId: { type: Type.STRING, description: "Optional asset ID from the list if this is an investment choice." },
                 impact: {
                   type: Type.OBJECT,
                   properties: {
@@ -84,7 +90,7 @@ export const getNextScenario = async (
         },
         required: ["title", "description", "choices", "imageTheme"]
       },
-      systemInstruction: "You are NairaWise. Treat Equities and Mutual Funds as the core of your investment advice. The user sees them in a unified 'Invest' tab. Consider their family size and status."
+      systemInstruction: "You are NairaWise, a financial roleplay engine. Output exactly 5 choices. Reflect investment costs in impact.balance. Ensure family size impacts costs if married or with kids."
     }
   });
 
