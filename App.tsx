@@ -11,7 +11,7 @@ import {
   Goal,
   LeaderboardEntry
 } from './types';
-import { getNextScenario } from './services/geminiService';
+import { getNextScenario } from './geminiService';
 import Dashboard from './Dashboard';
 import StockMarket from './StockMarket';
 import { 
@@ -58,13 +58,13 @@ const CHALLENGES = [
 ];
 
 const FALLBACK_SCENARIO: Scenario = {
-  title: "A Common Day in Nigeria",
-  description: "Traffic is heavy, the heat is intense, and your phone is ringing. It's an urgent 2k request from an old friend.",
-  imageTheme: "traffic",
+  title: "Morning in Nigeria",
+  description: "The sun is up and the hustle begins. Your phone pings with an 'Urgent 2k' request.",
+  imageTheme: "lagos",
   choices: [
-    { text: "Help them out (Prudent)", consequence: "You feel good, but your wallet is lighter.", impact: { balance: -2000, savings: 0, debt: 0, happiness: 10 } },
-    { text: "Ignore the call (Social)", consequence: "You save money but the guilt lingers.", impact: { balance: 0, savings: 0, debt: 0, happiness: -5 } },
-    { text: "Suggest a business idea (Risky)", consequence: "They are annoyed but you kept your cash.", impact: { balance: 0, savings: 0, debt: 0, happiness: 0 } }
+    { text: "Send the 2k (Social)", consequence: "You're a good friend, but your wallet hurts.", impact: { balance: -2000, savings: 0, debt: 0, happiness: 10 } },
+    { text: "Ignore the text (Prudent)", consequence: "Money saved, but your reputation is shaking.", impact: { balance: 0, savings: 0, debt: 0, happiness: -5 } },
+    { text: "Ask for a favor back (Risky)", consequence: "They go silent. Awkward.", impact: { balance: 0, savings: 0, debt: 0, happiness: 0 } }
   ]
 };
 
@@ -76,10 +76,9 @@ const App: React.FC = () => {
   const [nextScenario, setNextScenario] = useState<Scenario | null>(null);
   const [history, setHistory] = useState<GameLog[]>([]);
   const [lastConsequence, setLastConsequence] = useState<{text: string; title: string} | null>(null);
-  const [activeTab, setActiveTab] = useState<'scenario' | 'market' | 'history' | 'leaderboard'>('scenario');
+  const [activeTab, setActiveTab] = useState<'scenario' | 'market' | 'history'>('scenario');
   const [stocks, setStocks] = useState<Stock[]>(INITIAL_STOCKS);
   const [portfolio, setPortfolio] = useState<PortfolioItem[]>([]);
-  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [showFallback, setShowFallback] = useState(false);
   const isPrefetching = useRef(false);
 
@@ -101,40 +100,8 @@ const App: React.FC = () => {
     isPrefetching.current = false;
   }, []);
 
-  useEffect(() => {
-    const saved = localStorage.getItem('nairawise_v5');
-    if (saved) {
-      try {
-        const data = JSON.parse(saved);
-        setStats(data.stats);
-        setGoals(data.goals);
-        setHistory(data.history || []);
-        setStocks(data.stocks || INITIAL_STOCKS);
-        setPortfolio(data.portfolio || []);
-        setCurrentScenario(data.currentScenario);
-        setStatus(GameStatus.PLAYING);
-        prefetchNext(data.stats, data.history || []);
-      } catch (e) { console.error("Restore error", e); }
-    }
-  }, [prefetchNext]);
-
-  useEffect(() => {
-    if (status === GameStatus.PLAYING && stats) {
-      localStorage.setItem('nairawise_v5', JSON.stringify({ stats, goals, history, stocks, portfolio, currentScenario, status }));
-    }
-  }, [status, stats, goals, history, stocks, portfolio, currentScenario]);
-
-  const calculateNetAssets = (s: PlayerStats | null, p: PortfolioItem[]) => {
-    if (!s) return 0;
-    const pVal = p.reduce((total, item) => {
-      const stock = stocks.find(st => st.id === item.stockId);
-      return total + (stock ? stock.price * item.shares : 0);
-    }, 0);
-    return s.balance + s.savings + pVal - s.debt;
-  };
-
   const handleFinishSetup = async () => {
-    if (!setupData.name) return alert("Haba! Enter your name first.");
+    if (!setupData.name) return alert("Oga, enter your name!");
     const initial = {
       name: setupData.name, age: setupData.age, job: setupData.job,
       salary: setupData.salary, balance: setupData.salary,
@@ -148,7 +115,7 @@ const App: React.FC = () => {
     setStats(initial);
     setGoals([{ ...PRESET_GOALS.find(g => g.id === setupData.selectedGoalId)! }]);
     
-    const timeoutId = setTimeout(() => setShowFallback(true), 5000);
+    const timeoutId = setTimeout(() => setShowFallback(true), 6000);
 
     try {
       const scenario = await getNextScenario(initial, []);
@@ -157,7 +124,7 @@ const App: React.FC = () => {
       setStatus(GameStatus.PLAYING);
       prefetchNext(initial, []);
     } catch (e) { 
-      console.error(e);
+      console.error("Initial load failed", e);
       setCurrentScenario(FALLBACK_SCENARIO);
       setStatus(GameStatus.PLAYING);
     }
@@ -180,7 +147,7 @@ const App: React.FC = () => {
       happiness: Math.min(100, Math.max(0, stats.happiness + choice.impact.happiness)),
       currentWeek: stats.currentWeek + 1
     };
-    const assets = calculateNetAssets(nextStats, portfolio);
+    const assets = nextStats.balance + nextStats.savings - nextStats.debt;
     setGoals(goals.map(g => (assets >= g.target && !g.completed) ? { ...g, completed: true } : g));
     const entry = { week: stats.currentWeek, title: currentScenario.title, decision: choice.text, consequence: choice.consequence };
     setHistory([...history, entry]);
@@ -203,24 +170,20 @@ const App: React.FC = () => {
       setStatus(GameStatus.LOADING);
       const check = setInterval(() => {
         if (nextScenario) { clearInterval(check); setStatus(GameStatus.PLAYING); proceed(); }
-      }, 50);
+      }, 100);
     }
   };
-
-  const netAssets = calculateNetAssets(stats, portfolio);
 
   return (
     <div className="min-h-screen max-w-6xl mx-auto px-4 py-8">
       {status === GameStatus.START && (
         <div className="max-w-4xl mx-auto text-center space-y-12 py-20 animate-in zoom-in duration-300">
           <div className="bg-white rounded-[4rem] p-20 shadow-2xl border border-slate-100">
-            <div className="bg-emerald-100 w-24 h-24 rounded-3xl flex items-center justify-center mx-auto mb-8">
-               <Coins className="w-12 h-12 text-emerald-600" />
-            </div>
+            <Coins className="w-20 h-20 text-emerald-600 mx-auto mb-8" />
             <h2 className="text-7xl font-black text-slate-900 mb-4 tracking-tighter">NairaWise</h2>
-            <p className="text-2xl text-slate-500 font-bold mb-12">Survival. Strategy. Success.</p>
+            <p className="text-2xl text-slate-500 font-bold mb-12 uppercase tracking-widest">Financial Legend Simulator</p>
             <button onClick={() => setStatus(GameStatus.SETUP)} className="px-16 py-8 bg-slate-900 hover:bg-emerald-600 text-white rounded-[2.5rem] font-black text-2xl flex items-center gap-4 mx-auto transition-all shadow-xl">
-              Start Your Hustle <ChevronRight />
+              Start Journey <ChevronRight />
             </button>
           </div>
         </div>
@@ -228,46 +191,33 @@ const App: React.FC = () => {
 
       {status === GameStatus.SETUP && (
         <div className="max-w-3xl mx-auto bg-white p-12 rounded-[3.5rem] shadow-2xl border border-slate-100 space-y-10 animate-in slide-in-from-bottom-6 duration-300">
-          <div className="flex items-center gap-4">
-            <UserCircle2 className="w-12 h-12 text-emerald-600" />
-            <h2 className="text-4xl font-black">Your Persona</h2>
-          </div>
+          <h2 className="text-4xl font-black flex items-center gap-4"><UserCircle2 className="text-emerald-600" /> Create Persona</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            <div className="space-y-2">
-              <label className="text-xs font-black text-slate-400 uppercase tracking-widest px-2">Legal Name</label>
-              <input type="text" value={setupData.name} onChange={e => setSetupData({...setupData, name: e.target.value})} placeholder="Ebuka" className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-[1.5rem] font-bold outline-none focus:border-emerald-500 transition-colors" />
-            </div>
-            <div className="space-y-2">
-              <label className="text-xs font-black text-slate-400 uppercase tracking-widest px-2">City/State</label>
-              <select value={setupData.city} onChange={e => setSetupData({...setupData, city: e.target.value})} className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-[1.5rem] font-bold outline-none focus:border-emerald-500 transition-colors">
-                {ALL_NIGERIAN_STATES.map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
-            </div>
+            <input type="text" value={setupData.name} onChange={e => setSetupData({...setupData, name: e.target.value})} placeholder="Name" className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-[1.5rem] font-bold outline-none focus:border-emerald-500 transition-colors" />
+            <select value={setupData.city} onChange={e => setSetupData({...setupData, city: e.target.value})} className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-[1.5rem] font-bold outline-none focus:border-emerald-500 transition-colors">
+              {ALL_NIGERIAN_STATES.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
           </div>
-          <div className="space-y-4">
-            <label className="text-xs font-black text-slate-400 uppercase tracking-widest px-2">Starting Burden</label>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {CHALLENGES.map(c => (
-                <button key={c.id} onClick={() => setSetupData({...setupData, challengeId: c.id})} className={`p-6 border-4 rounded-[2rem] text-left transition-all ${setupData.challengeId === c.id ? 'border-emerald-500 bg-emerald-50' : 'border-slate-50 hover:bg-slate-50'}`}>
-                  <p className="font-black text-lg">{c.name}</p>
-                  <p className="text-xs text-slate-400 font-bold">{c.description}</p>
-                </button>
-              ))}
-            </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {CHALLENGES.map(c => (
+              <button key={c.id} onClick={() => setSetupData({...setupData, challengeId: c.id})} className={`p-6 border-4 rounded-[2rem] text-left transition-all ${setupData.challengeId === c.id ? 'border-emerald-500 bg-emerald-50' : 'border-slate-50 hover:bg-slate-50'}`}>
+                <p className="font-black text-lg">{c.name}</p>
+                <p className="text-xs text-slate-400 font-bold">{c.description}</p>
+              </button>
+            ))}
           </div>
-          <button onClick={handleFinishSetup} className="w-full py-8 bg-slate-900 text-white rounded-[2.5rem] font-black text-2xl hover:bg-emerald-600 transition-all shadow-xl">Go Live</button>
+          <button onClick={handleFinishSetup} className="w-full py-8 bg-slate-900 text-white rounded-[2.5rem] font-black text-2xl hover:bg-emerald-600 transition-all shadow-xl">Start Lifestyle</button>
         </div>
       )}
 
       {status === GameStatus.LOADING && (
         <div className="flex flex-col items-center justify-center py-48 text-center px-4 animate-in fade-in duration-500">
           <Loader2 className="w-20 h-20 text-emerald-600 animate-spin mb-10" />
-          <h3 className="text-2xl font-black text-slate-900 mb-4 uppercase tracking-[0.3em]">Collation Hub</h3>
-          <p className="text-slate-400 font-bold max-w-xs mb-10">Fetching your first economic cycle from the Nigerian data grid...</p>
-          
+          <h3 className="text-2xl font-black text-slate-900 mb-4 uppercase tracking-[0.3em]">Hustle Grid Syncing</h3>
+          <p className="text-slate-400 font-bold mb-10">Initializing economic parameters for {stats?.city}...</p>
           {showFallback && (
             <button onClick={handleSkipLoading} className="px-10 py-5 bg-amber-50 text-amber-700 rounded-3xl font-black flex items-center gap-3 border-2 border-amber-100 hover:bg-amber-100 transition-all">
-              <AlertCircle /> Connection Slow? Skip to Hustle
+              <AlertCircle /> Connection Slow? Skip Loading
             </button>
           )}
         </div>
@@ -291,9 +241,8 @@ const App: React.FC = () => {
             <StockMarket stocks={stocks} portfolio={portfolio} news={[]} onBuy={() => {}} onSell={() => {}} balance={stats.balance} onSetTrigger={() => {}} />
           ) : activeTab === 'history' ? (
              <div className="bg-white p-12 rounded-[3.5rem] shadow-xl border border-slate-100">
-               <h3 className="text-3xl font-black mb-10">Legacy Journal</h3>
+               <h3 className="text-3xl font-black mb-10">Journal</h3>
                <div className="space-y-4">
-                  {history.length === 0 && <p className="text-slate-400 font-bold italic">No history yet. Start making moves.</p>}
                   {history.map((h, i) => (
                     <div key={i} className="p-6 bg-slate-50 rounded-3xl border border-slate-100 flex justify-between items-center">
                        <div>
@@ -311,28 +260,25 @@ const App: React.FC = () => {
               <h3 className="text-5xl font-black mb-6 text-slate-900 tracking-tight">{lastConsequence.title}</h3>
               <p className="text-2xl text-slate-500 italic mb-14 max-w-3xl mx-auto leading-relaxed font-medium">"{lastConsequence.text}"</p>
               <button onClick={proceed} className="px-24 py-8 bg-slate-900 hover:bg-emerald-600 text-white rounded-[3rem] font-black text-2xl shadow-2xl transition-all active:scale-95">
-                Next: Week {stats.currentWeek}
+                Go to Week {stats.currentWeek}
               </button>
             </div>
           ) : (
             <>
-              <Dashboard stats={stats} goals={goals} netAssets={netAssets} />
+              <Dashboard stats={stats} goals={goals} netAssets={stats.balance + stats.savings - stats.debt} />
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
                 <div className="bg-white rounded-[4rem] overflow-hidden shadow-2xl border border-slate-100 relative group">
-                  <img src={`https://picsum.photos/seed/${currentScenario?.imageTheme || 'naija'}/1200/800`} className="w-full h-[400px] object-cover transition-transform duration-700 group-hover:scale-110" alt="Scenario" />
+                  <img src={`https://picsum.photos/seed/${currentScenario?.imageTheme || 'hustle'}/1200/800`} className="w-full h-[400px] object-cover transition-transform duration-700 group-hover:scale-110" alt="Scenario" />
                   <div className="p-14 -mt-14 bg-white relative rounded-t-[4rem]">
                     <h3 className="text-4xl font-black mb-8 leading-tight tracking-tight text-slate-900">{currentScenario?.title}</h3>
                     <p className="text-slate-500 text-2xl leading-relaxed font-medium">{currentScenario?.description}</p>
                   </div>
                 </div>
                 <div className="space-y-6">
-                  <p className="text-xs font-black text-slate-400 uppercase tracking-[0.5em] px-10">Strategic Decisions</p>
                   {currentScenario?.choices.map((choice, i) => (
                     <button key={i} onClick={() => handleChoice(choice)} className="w-full text-left p-12 bg-white border-2 border-slate-50 hover:border-emerald-500 hover:bg-emerald-50/20 rounded-[3.5rem] transition-all group shadow-sm hover:shadow-2xl">
                       <p className="font-black text-3xl mb-3 group-hover:text-emerald-700 leading-tight">{choice.text}</p>
-                      <span className="text-xs font-bold text-slate-400 uppercase flex items-center gap-2 tracking-widest">
-                        <Banknote size={18} /> Impact Cycle Pending
-                      </span>
+                      <span className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2"><Banknote size={18} /> Impact Cycle Pending</span>
                     </button>
                   ))}
                 </div>

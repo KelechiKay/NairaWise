@@ -2,15 +2,13 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { PlayerStats, Scenario, GameLog } from "./types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-
 export const getNextScenario = async (
   stats: PlayerStats,
   history: GameLog[]
 ): Promise<Scenario> => {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const historyContext = history.slice(-3).map(h => `Week ${h.week}: ${h.decision}`).join('\n');
 
-  // Determine complexity phase
   let phase = "SURVIVAL (Sapa Era)";
   if (stats.currentWeek > 500) phase = "LEGACY (Billionaire Era)";
   else if (stats.currentWeek > 200) phase = "EXPANSION (Oga Era)";
@@ -18,20 +16,15 @@ export const getNextScenario = async (
 
   const prompt = `
     Create a financial scenario for a Nigerian citizen.
-    
     PLAYER: ${stats.name}, ${stats.job} in ${stats.city}.
     WEEK: ${stats.currentWeek}/1000 (${phase}).
     STATS: Balance ₦${stats.balance}, Debt ₦${stats.debt}, Happiness ${stats.happiness}%.
     RECENT ACTIONS: ${historyContext}
 
     GUIDELINES:
-    1. Local Flavor: Use specific economic conditions of ${stats.city} (e.g. trade in Aba, civil service in Abuja, tech in Yaba).
-    2. Slang: Use localized Nigerian Pidgin/slang naturally.
-    3. Choices: 
-       - Prudent (Low risk, small gain)
-       - Social (High cost for networking/status)
-       - Risky (High growth potential but can backfire)
-
+    1. Local Flavor: Use specific economic conditions of ${stats.city}.
+    2. Slang: Use localized Nigerian Pidgin naturally.
+    3. Choices: Prudent, Social, Risky.
     RESPONSE FORMAT: JSON only.
   `;
 
@@ -70,7 +63,7 @@ export const getNextScenario = async (
         },
         required: ["title", "description", "choices", "imageTheme"]
       },
-      systemInstruction: "You are NairaWise, a fast and immersive financial literacy engine for Nigerians. Keep responses punchy and realistic."
+      systemInstruction: "You are NairaWise, an immersive financial engine for Nigerians. Generate JSON only."
     }
   });
 
@@ -78,6 +71,7 @@ export const getNextScenario = async (
 };
 
 export const getEndGameAnalysis = async (stats: PlayerStats, history: GameLog[]) => {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const prompt = `Review this Nigerian's journey of ${stats.currentWeek} weeks. Net Assets: ₦${stats.balance + stats.savings - stats.debt}. Evaluate their performance with wit and wisdom.`;
   const response = await ai.models.generateContent({
     model: 'gemini-3-flash-preview',
