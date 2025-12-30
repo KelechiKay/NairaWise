@@ -10,21 +10,39 @@ export const getNextScenario = async (
   const historyContext = history.slice(-3).map(h => `Week ${h.week}: ${h.decision}`).join('\n');
 
   let phase = "SURVIVAL (Sapa Era)";
-  if (stats.currentWeek > 500) phase = "LEGACY (Billionaire Era)";
-  else if (stats.currentWeek > 200) phase = "EXPANSION (Oga Era)";
-  else if (stats.currentWeek > 50) phase = "GROWTH (Hustle Era)";
+  if (stats.currentWeek > 50) phase = "GROWTH (Hustle Era)";
+  if (stats.currentWeek > 150) phase = "EXPANSION (Oga Era)";
+  if (stats.currentWeek > 300) phase = "LEGACY (Billionaire Era)";
 
   const prompt = `
     Create a financial scenario for a Nigerian citizen.
-    PLAYER: ${stats.name}, ${stats.job} in ${stats.city}.
-    WEEK: ${stats.currentWeek}/1000 (${phase}).
-    STATS: Balance ₦${stats.balance}, Debt ₦${stats.debt}, Happiness ${stats.happiness}%.
-    RECENT ACTIONS: ${historyContext}
+    
+    PLAYER PERSONALIZATION:
+    - NAME: ${stats.name}
+    - JOB: ${stats.job}
+    - MONTHLY INCOME: ₦${stats.salary.toLocaleString()}
+    - CURRENT BALANCE: ₦${stats.balance.toLocaleString()}
+    - SAVINGS/INVESTMENTS: ₦${stats.savings.toLocaleString()}
+    - LOCATION: ${stats.city}
+    - GAME PROGRESS: Week ${stats.currentWeek} (${phase})
+    - CHALLENGE: ${stats.challenge}
 
-    GUIDELINES:
-    1. Local Flavor: Use specific economic conditions of ${stats.city}.
-    2. Slang: Use localized Nigerian Pidgin naturally.
-    3. Choices: Prudent, Social, Risky.
+    SCENARIO GUIDELINES:
+    1. Financial Scaling: THE FINANCIAL IMPACTS MUST BE REALISTIC TO THE PLAYER'S INCOME.
+    2. Professional Flavor: Scenarios should relate to being a ${stats.job} or living in ${stats.city}.
+    3. Investment Opportunities: At least one choice should occasionally offer to BUY STOCKS, INVEST IN MUTUAL FUNDS, or PUT MONEY IN SAVINGS. 
+       - If they invest, 'balance' goes down and 'savings' goes up.
+    4. Cultural Context: Use specific economic conditions of Nigeria.
+    5. Slang: Use localized Nigerian Pidgin naturally.
+    6. Choices: PROVIDE EXACTLY 4 DISTINCT CHOICES covering these archetypes:
+       - Prudent (Saving/Investing/Long-term)
+       - Social (Family/Black Tax/Status)
+       - Risky (Gambling/Volatile business)
+       - Opportunistic (Quick flip/Side hustle)
+
+    RECENT ACTIONS:
+    ${historyContext}
+
     RESPONSE FORMAT: JSON only.
   `;
 
@@ -41,6 +59,8 @@ export const getNextScenario = async (
           imageTheme: { type: Type.STRING },
           choices: {
             type: Type.ARRAY,
+            minItems: 4,
+            maxItems: 4,
             items: {
               type: Type.OBJECT,
               properties: {
@@ -63,7 +83,7 @@ export const getNextScenario = async (
         },
         required: ["title", "description", "choices", "imageTheme"]
       },
-      systemInstruction: "You are NairaWise, an immersive financial engine for Nigerians. Generate JSON only."
+      systemInstruction: "You are NairaWise, a financial RPG engine. The game is indefinite. Bankruptcy happens if balance reaches zero. Provide 4 choices including investment options where relevant."
     }
   });
 
@@ -72,11 +92,21 @@ export const getNextScenario = async (
 
 export const getEndGameAnalysis = async (stats: PlayerStats, history: GameLog[]) => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  const prompt = `Review this Nigerian's journey of ${stats.currentWeek} weeks. Net Assets: ₦${stats.balance + stats.savings - stats.debt}. Evaluate their performance with wit and wisdom.`;
+  const prompt = `
+    The player has gone bankrupt (Sapa has won). 
+    FINAL STATS:
+    - Name: ${stats.name}
+    - Job: ${stats.job}
+    - Week reached: ${stats.currentWeek}
+    - Total Wealth (Peak): ₦${(stats.balance + stats.savings).toLocaleString()}
+    - Debt: ₦${stats.debt.toLocaleString()}
+    
+    Review their journey. Be witty, wise, and slightly critical but encouraging. Use Nigerian slang. Tell them why they failed and give 3 tips for their next run.
+  `;
   const response = await ai.models.generateContent({
     model: 'gemini-3-flash-preview',
     contents: prompt,
     config: { systemInstruction: "You are a wise Nigerian financial mentor." }
   });
-  return response.text || "You fought well against Sapa!";
+  return response.text || "Oga, Sapa finally catch you! Your money don finish.";
 };

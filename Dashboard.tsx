@@ -36,33 +36,26 @@ const StatCard = ({ icon: Icon, label, value, color, unit = "₦" }: any) => (
 
 const Dashboard: React.FC<DashboardProps> = ({ stats, goals, netAssets }) => {
   const getPhase = () => {
-    if (stats.currentWeek > 500) return { name: "Billionaire Era", color: "text-amber-600", bg: "bg-amber-50" };
-    if (stats.currentWeek > 200) return { name: "Oga Era", color: "text-indigo-600", bg: "bg-indigo-50" };
+    if (stats.currentWeek > 300) return { name: "Billionaire Era", color: "text-amber-600", bg: "bg-amber-50" };
+    if (stats.currentWeek > 150) return { name: "Oga Era", color: "text-indigo-600", bg: "bg-indigo-50" };
     if (stats.currentWeek > 50) return { name: "Hustle Era", color: "text-blue-600", bg: "bg-blue-50" };
     return { name: "Sapa Era", color: "text-emerald-600", bg: "bg-emerald-50" };
   };
 
   const phase = getPhase();
-  const weekProgress = (stats.currentWeek / 1000) * 100;
 
   return (
     <div className="space-y-6 mb-10">
-      {/* 1000 Week Progress Bar */}
+      {/* Dynamic Week Header */}
       <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden relative">
-        <div className="flex justify-between items-center mb-2">
+        <div className="flex justify-between items-center">
           <div className="flex items-center gap-2">
-            <Calendar className="w-4 h-4 text-slate-400" />
-            <span className="text-xs font-black text-slate-400 uppercase tracking-widest">Journey Progress: Week {stats.currentWeek} / 1000</span>
+            <Calendar className="w-5 h-5 text-indigo-500" />
+            <span className="text-sm font-black text-slate-600 uppercase tracking-widest">Endurance Run: Week {stats.currentWeek}</span>
           </div>
-          <div className={`px-4 py-1 rounded-full text-[10px] font-black uppercase tracking-tighter ${phase.bg} ${phase.color} flex items-center gap-1`}>
+          <div className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-tighter ${phase.bg} ${phase.color} flex items-center gap-1 border border-current opacity-80`}>
             <Zap className="w-3 h-3" /> {phase.name}
           </div>
-        </div>
-        <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-          <div 
-            className="h-full bg-slate-900 transition-all duration-700"
-            style={{ width: `${weekProgress}%` }}
-          />
         </div>
       </div>
 
@@ -127,11 +120,6 @@ const Dashboard: React.FC<DashboardProps> = ({ stats, goals, netAssets }) => {
                     style={{ width: `${progress}%` }}
                   />
                 </div>
-                {goal.completed && (
-                  <div className="flex items-center gap-2 text-emerald-400 font-black uppercase text-xs animate-bounce">
-                    <Trophy className="w-4 h-4" /> Goal Met! But can you sustain it for 1000 weeks?
-                  </div>
-                )}
               </div>
             );
           })}
