@@ -1,8 +1,7 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
-import { PlayerStats, Scenario, GameLog } from "../types";
+import { PlayerStats, Scenario, GameLog } from "./types";
 
-// Explicitly cast process.env to any to bypass strict node type checking if needed
 const apiKey = (process.env as any).API_KEY || '';
 const ai = new GoogleGenAI({ apiKey });
 
@@ -16,20 +15,7 @@ export const getNextScenario = async (
     Create a financial scenario for a Nigerian ${stats.job}.
     Current Stats: Balance ₦${stats.balance}, Savings ₦${stats.savings}, Debt ₦${stats.debt}, Happiness ${stats.happiness}%.
     Week: ${stats.currentWeek}.
-
-    Themes to include:
-    - Ajo, Stocks, Fixed Deposits, Side Hustles, Sapa management.
-
-    Market Integration:
-    - Occasionally include a "marketEvent" property that affects fictional Nigerian stocks: 
-      'lagos-gas' (Energy), 'kano-textiles' (Manufacturing), 'nairatech' (Tech), 'obudu-agri' (Agriculture).
-
-    Rules:
-    - Use Nigerian slang (Japa, Sapa, Owanbe, Aso-ebi, Urgent 2k).
-    - 3 Choices: 1. Prudent/Investing 2. Social/Expensive 3. Risky/Quick-gain.
-
-    Context:
-    ${historyContext}
+    Nigerian Context: Focus on Ajo, Sapa, investment opportunities, and family pressures.
   `;
 
   const response = await ai.models.generateContent({
@@ -63,41 +49,22 @@ export const getNextScenario = async (
               },
               required: ["text", "consequence", "impact"]
             }
-          },
-          marketEvent: {
-            type: Type.OBJECT,
-            properties: {
-              headline: { type: Type.STRING },
-              impact: { type: Type.STRING, description: 'positive, negative, or neutral' },
-              stockId: { type: Type.STRING, description: 'lagos-gas, kano-textiles, nairatech, or obudu-agri' }
-            },
-            required: ["headline", "impact", "stockId"]
           }
         },
         required: ["title", "description", "choices", "imageTheme"]
       },
-      systemInstruction: "You are a witty Nigerian financial expert. Generate immersive JSON scenarios for NairaWise. Focus on investing and wealth building."
+      systemInstruction: "You are a witty Nigerian financial expert. Focus on immersive scenarios and realistic slang."
     }
   });
 
-  const text = response.text || "{}";
-  return JSON.parse(text);
+  return JSON.parse(response.text || "{}");
 };
 
 export const getEndGameAnalysis = async (stats: PlayerStats, history: GameLog[]) => {
-  const prompt = `
-    Final Review for Week ${stats.currentWeek}.
-    Stats: ₦${stats.balance} bal, ₦${stats.savings} save, ₦${stats.debt} debt, ${stats.happiness}% happy.
-    Review their decisions. Be a 'Wise Oga'.
-  `;
-
+  const prompt = `Review performance: ₦${stats.balance} balance at Week ${stats.currentWeek}. Give a brief 'Wise Oga' review.`;
   const response = await ai.models.generateContent({
     model: 'gemini-3-flash-preview',
-    contents: prompt,
-    config: {
-        systemInstruction: "You are a wise Nigerian mentor giving a quick performance review."
-    }
+    contents: prompt
   });
-
-  return response.text || "You did your best, but the market is tough. Keep learning!";
+  return response.text || "Market is tough, keep pushing!";
 };
