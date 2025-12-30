@@ -8,11 +8,10 @@ import {
   Choice,
   Stock,
   PortfolioItem,
-  MarketNews,
   Goal,
   LeaderboardEntry
 } from './types';
-import { getNextScenario } from './geminiService';
+import { getNextScenario } from './services/geminiService';
 import Dashboard from './Dashboard';
 import StockMarket from './StockMarket';
 import { 
@@ -21,18 +20,13 @@ import {
   CheckCircle2, 
   UserCircle2,
   Banknote,
-  Target,
   Sparkles,
   Heart,
-  MapPin,
-  ShieldAlert,
   GraduationCap,
   ChevronRight,
-  TrendingUp,
-  History,
   Trophy,
-  Share2,
-  LogOut
+  LogOut,
+  AlertCircle
 } from 'lucide-react';
 
 const INITIAL_STOCKS: Stock[] = [
@@ -63,6 +57,17 @@ const CHALLENGES = [
   { id: 'fresh-start', name: 'Silver Spoon', icon: Sparkles, description: '₦200k inheritance start.' }
 ];
 
+const FALLBACK_SCENARIO: Scenario = {
+  title: "A Common Day in Nigeria",
+  description: "Traffic is heavy, the heat is intense, and your phone is ringing. It's an urgent 2k request from an old friend.",
+  imageTheme: "traffic",
+  choices: [
+    { text: "Help them out (Prudent)", consequence: "You feel good, but your wallet is lighter.", impact: { balance: -2000, savings: 0, debt: 0, happiness: 10 } },
+    { text: "Ignore the call (Social)", consequence: "You save money but the guilt lingers.", impact: { balance: 0, savings: 0, debt: 0, happiness: -5 } },
+    { text: "Suggest a business idea (Risky)", consequence: "They are annoyed but you kept your cash.", impact: { balance: 0, savings: 0, debt: 0, happiness: 0 } }
+  ]
+};
+
 const App: React.FC = () => {
   const [status, setStatus] = useState<GameStatus>(GameStatus.START);
   const [stats, setStats] = useState<PlayerStats | null>(null);
@@ -75,16 +80,12 @@ const App: React.FC = () => {
   const [stocks, setStocks] = useState<Stock[]>(INITIAL_STOCKS);
   const [portfolio, setPortfolio] = useState<PortfolioItem[]>([]);
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
+  const [showFallback, setShowFallback] = useState(false);
   const isPrefetching = useRef(false);
 
   const [setupData, setSetupData] = useState({
-    name: '',
-    age: 22,
-    job: 'Hustler',
-    salary: 100000,
-    city: 'Lagos',
-    challengeId: 'no-capital',
-    selectedGoalId: 'save-1m'
+    name: '', age: 22, job: 'Entrepreneur', salary: 150000, city: 'Lagos',
+    challengeId: 'no-capital', selectedGoalId: 'save-1m'
   });
 
   const prefetchNext = useCallback(async (s: PlayerStats, h: GameLog[]) => {
@@ -93,35 +94,35 @@ const App: React.FC = () => {
     try {
       const scenario = await getNextScenario(s, h);
       setNextScenario(scenario);
-    } catch (e) { console.error("Prefetch failed", e); }
+    } catch (e) { 
+      console.error("Prefetch failed", e);
+      setNextScenario(FALLBACK_SCENARIO);
+    }
     isPrefetching.current = false;
   }, []);
 
   useEffect(() => {
-    const saved = localStorage.getItem('nairawise_v4');
-    const savedLB = localStorage.getItem('nairawise_leaderboard_v4');
-    if (savedLB) setLeaderboard(JSON.parse(savedLB));
+    const saved = localStorage.getItem('nairawise_v5');
     if (saved) {
       try {
         const data = JSON.parse(saved);
         setStats(data.stats);
         setGoals(data.goals);
-        setHistory(data.history);
+        setHistory(data.history || []);
         setStocks(data.stocks || INITIAL_STOCKS);
         setPortfolio(data.portfolio || []);
         setCurrentScenario(data.currentScenario);
         setStatus(GameStatus.PLAYING);
-        prefetchNext(data.stats, data.history);
-      } catch (e) { console.error(e); }
+        prefetchNext(data.stats, data.history || []);
+      } catch (e) { console.error("Restore error", e); }
     }
   }, [prefetchNext]);
 
   useEffect(() => {
     if (status === GameStatus.PLAYING && stats) {
-      localStorage.setItem('nairawise_v4', JSON.stringify({ stats, goals, history, stocks, portfolio, currentScenario, status }));
+      localStorage.setItem('nairawise_v5', JSON.stringify({ stats, goals, history, stocks, portfolio, currentScenario, status }));
     }
-    localStorage.setItem('nairawise_leaderboard_v4', JSON.stringify(leaderboard));
-  }, [status, stats, goals, history, stocks, portfolio, currentScenario, leaderboard]);
+  }, [status, stats, goals, history, stocks, portfolio, currentScenario]);
 
   const calculateNetAssets = (s: PlayerStats | null, p: PortfolioItem[]) => {
     if (!s) return 0;
@@ -132,61 +133,8 @@ const App: React.FC = () => {
     return s.balance + s.savings + pVal - s.debt;
   };
 
-  // Fix: Implemented handleBuy to process stock purchases and update balance.
-  const handleBuy = (stockId: string) => {
-    if (!stats) return;
-    const stock = stocks.find(s => s.id === stockId);
-    if (!stock || stats.balance < stock.price) return;
-    setStats({ ...stats, balance: stats.balance - stock.price });
-    setPortfolio(prev => {
-      const existing = prev.find(p => p.stockId === stockId);
-      if (existing) {
-        return prev.map(p => p.stockId === stockId ? { ...p, shares: p.shares + 1 } : p);
-      }
-      return [...prev, { stockId, shares: 1, averagePrice: stock.price }];
-    });
-  };
-
-  // Fix: Implemented handleSell to process stock sales and update balance.
-  const handleSell = (stockId: string) => {
-    if (!stats) return;
-    const stock = stocks.find(s => s.id === stockId);
-    const holding = portfolio.find(p => p.stockId === stockId);
-    if (!stock || !holding || holding.shares <= 0) return;
-    setStats({ ...stats, balance: stats.balance + stock.price });
-    setPortfolio(prev => prev.map(p => p.stockId === stockId ? { ...p, shares: p.shares - 1 } : p).filter(p => p.shares > 0));
-  };
-
-  // Fix: Implemented handleSetTrigger to update portfolio stop-loss and take-profit values.
-  const handleSetTrigger = (stockId: string, type: 'stopLoss' | 'takeProfit', value: number | undefined) => {
-    setPortfolio(prev => prev.map(p => p.stockId === stockId ? { ...p, [type]: value } : p));
-  };
-
-  // Fix: Implemented handleRetire to archive game session and record final net assets on leaderboard.
-  const handleRetire = () => {
-    if (!stats) return;
-    const finalAssets = calculateNetAssets(stats, portfolio);
-    const entry: LeaderboardEntry = {
-      name: stats.name,
-      city: stats.city,
-      netAssets: finalAssets,
-      week: stats.currentWeek,
-      rank: finalAssets > 50000000 ? 'Industrialist' : finalAssets > 5000000 ? 'Oga' : 'Hustler',
-      timestamp: Date.now()
-    };
-    const newLB = [...leaderboard, entry].sort((a, b) => b.netAssets - a.netAssets).slice(0, 10);
-    setLeaderboard(newLB);
-    localStorage.removeItem('nairawise_v4');
-    setStats(null);
-    setHistory([]);
-    setPortfolio([]);
-    setCurrentScenario(null);
-    setNextScenario(null);
-    setStatus(GameStatus.START);
-  };
-
   const handleFinishSetup = async () => {
-    if (!setupData.name) return alert("Oga, name please!");
+    if (!setupData.name) return alert("Haba! Enter your name first.");
     const initial = {
       name: setupData.name, age: setupData.age, job: setupData.job,
       salary: setupData.salary, balance: setupData.salary,
@@ -195,15 +143,31 @@ const App: React.FC = () => {
       happiness: 80, currentWeek: 1, city: setupData.city,
       challenge: CHALLENGES.find(c => c.id === setupData.challengeId)?.name || ''
     };
+    
     setStatus(GameStatus.LOADING);
     setStats(initial);
     setGoals([{ ...PRESET_GOALS.find(g => g.id === setupData.selectedGoalId)! }]);
+    
+    const timeoutId = setTimeout(() => setShowFallback(true), 5000);
+
     try {
       const scenario = await getNextScenario(initial, []);
+      clearTimeout(timeoutId);
       setCurrentScenario(scenario);
       setStatus(GameStatus.PLAYING);
       prefetchNext(initial, []);
-    } catch (e) { setStatus(GameStatus.SETUP); }
+    } catch (e) { 
+      console.error(e);
+      setCurrentScenario(FALLBACK_SCENARIO);
+      setStatus(GameStatus.PLAYING);
+    }
+  };
+
+  const handleSkipLoading = () => {
+    if (!stats) return;
+    setCurrentScenario(FALLBACK_SCENARIO);
+    setStatus(GameStatus.PLAYING);
+    prefetchNext(stats, []);
   };
 
   const handleChoice = async (choice: Choice) => {
@@ -222,16 +186,13 @@ const App: React.FC = () => {
     setHistory([...history, entry]);
     setStats(nextStats);
     setLastConsequence({ text: choice.consequence, title: currentScenario.title });
-    
-    // Start prefetching IMMEDIATELY
     if (!nextScenario) prefetchNext(nextStats, [...history, entry]);
   };
 
   const proceed = () => {
     if (nextScenario && stats) {
       setStocks(stocks.map(s => ({ 
-        ...s, 
-        price: Math.max(10, Math.round(s.price * (1 + (Math.random() * 0.1 - 0.05)))),
+        ...s, price: Math.max(10, Math.round(s.price * (1 + (Math.random() * 0.1 - 0.05)))),
         history: [...s.history, s.price].slice(-20) 
       })));
       setCurrentScenario(nextScenario);
@@ -249,114 +210,129 @@ const App: React.FC = () => {
   const netAssets = calculateNetAssets(stats, portfolio);
 
   return (
-    <div className="min-h-screen max-w-6xl mx-auto px-4 py-8 selection:bg-emerald-100">
+    <div className="min-h-screen max-w-6xl mx-auto px-4 py-8">
       {status === GameStatus.START && (
-        <div className="max-w-4xl mx-auto text-center space-y-12 py-20 animate-in zoom-in duration-200">
-          <div className="bg-white rounded-[3rem] p-16 shadow-2xl border border-slate-100">
-            <h2 className="text-7xl font-black text-slate-900 mb-6 tracking-tighter">NairaWise</h2>
-            <p className="text-xl text-slate-500 font-bold mb-10">The #1 Nigerian Financial Survival Game</p>
-            <div className="flex justify-center gap-4">
-              <button onClick={() => setStatus(GameStatus.SETUP)} className="px-14 py-6 bg-slate-900 hover:bg-emerald-600 text-white rounded-[2rem] font-black text-2xl flex items-center gap-4 transition-all hover:scale-105 active:scale-95 shadow-xl">
-                Build Legend <ChevronRight />
-              </button>
-              <button onClick={() => {setStatus(GameStatus.PLAYING); setActiveTab('leaderboard')}} className="p-6 bg-amber-50 text-amber-600 rounded-[2rem] border border-amber-200 hover:bg-amber-100 transition-all">
-                <Trophy size={32} />
-              </button>
+        <div className="max-w-4xl mx-auto text-center space-y-12 py-20 animate-in zoom-in duration-300">
+          <div className="bg-white rounded-[4rem] p-20 shadow-2xl border border-slate-100">
+            <div className="bg-emerald-100 w-24 h-24 rounded-3xl flex items-center justify-center mx-auto mb-8">
+               <Coins className="w-12 h-12 text-emerald-600" />
             </div>
+            <h2 className="text-7xl font-black text-slate-900 mb-4 tracking-tighter">NairaWise</h2>
+            <p className="text-2xl text-slate-500 font-bold mb-12">Survival. Strategy. Success.</p>
+            <button onClick={() => setStatus(GameStatus.SETUP)} className="px-16 py-8 bg-slate-900 hover:bg-emerald-600 text-white rounded-[2.5rem] font-black text-2xl flex items-center gap-4 mx-auto transition-all shadow-xl">
+              Start Your Hustle <ChevronRight />
+            </button>
           </div>
         </div>
       )}
 
       {status === GameStatus.SETUP && (
-        <div className="max-w-3xl mx-auto bg-white p-12 rounded-[3rem] shadow-2xl border border-slate-100 space-y-8 animate-in slide-in-from-bottom-4 duration-200">
-          <h2 className="text-4xl font-black flex items-center gap-3"><UserCircle2 className="text-emerald-600" /> Identity</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <input type="text" value={setupData.name} onChange={e => setSetupData({...setupData, name: e.target.value})} placeholder="Full Name" className="p-5 bg-slate-50 border rounded-2xl font-bold focus:ring-2 ring-emerald-500 outline-none" />
-            <select value={setupData.city} onChange={e => setSetupData({...setupData, city: e.target.value})} className="p-5 bg-slate-50 border rounded-2xl font-bold">
-              {ALL_NIGERIAN_STATES.map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
+        <div className="max-w-3xl mx-auto bg-white p-12 rounded-[3.5rem] shadow-2xl border border-slate-100 space-y-10 animate-in slide-in-from-bottom-6 duration-300">
+          <div className="flex items-center gap-4">
+            <UserCircle2 className="w-12 h-12 text-emerald-600" />
+            <h2 className="text-4xl font-black">Your Persona</h2>
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            {CHALLENGES.map(c => (
-              <button key={c.id} onClick={() => setSetupData({...setupData, challengeId: c.id})} className={`p-5 border-2 rounded-3xl text-left transition-all ${setupData.challengeId === c.id ? 'border-emerald-500 bg-emerald-50' : 'border-slate-100 hover:bg-slate-50'}`}>
-                <p className="font-black text-sm">{c.name}</p>
-              </button>
-            ))}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div className="space-y-2">
+              <label className="text-xs font-black text-slate-400 uppercase tracking-widest px-2">Legal Name</label>
+              <input type="text" value={setupData.name} onChange={e => setSetupData({...setupData, name: e.target.value})} placeholder="Ebuka" className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-[1.5rem] font-bold outline-none focus:border-emerald-500 transition-colors" />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-black text-slate-400 uppercase tracking-widest px-2">City/State</label>
+              <select value={setupData.city} onChange={e => setSetupData({...setupData, city: e.target.value})} className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-[1.5rem] font-bold outline-none focus:border-emerald-500 transition-colors">
+                {ALL_NIGERIAN_STATES.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
           </div>
-          <button onClick={handleFinishSetup} className="w-full py-6 bg-slate-900 text-white rounded-[2rem] font-black text-2xl hover:bg-emerald-600 transition-all shadow-xl">Start Lifecycle</button>
+          <div className="space-y-4">
+            <label className="text-xs font-black text-slate-400 uppercase tracking-widest px-2">Starting Burden</label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {CHALLENGES.map(c => (
+                <button key={c.id} onClick={() => setSetupData({...setupData, challengeId: c.id})} className={`p-6 border-4 rounded-[2rem] text-left transition-all ${setupData.challengeId === c.id ? 'border-emerald-500 bg-emerald-50' : 'border-slate-50 hover:bg-slate-50'}`}>
+                  <p className="font-black text-lg">{c.name}</p>
+                  <p className="text-xs text-slate-400 font-bold">{c.description}</p>
+                </button>
+              ))}
+            </div>
+          </div>
+          <button onClick={handleFinishSetup} className="w-full py-8 bg-slate-900 text-white rounded-[2.5rem] font-black text-2xl hover:bg-emerald-600 transition-all shadow-xl">Go Live</button>
         </div>
       )}
 
       {status === GameStatus.LOADING && (
-        <div className="flex flex-col items-center justify-center py-48">
-          <Loader2 className="w-16 h-16 text-emerald-600 animate-spin" />
-          <p className="mt-8 font-black text-slate-400 uppercase tracking-[0.4em] text-sm">Syncing Scenarios...</p>
+        <div className="flex flex-col items-center justify-center py-48 text-center px-4 animate-in fade-in duration-500">
+          <Loader2 className="w-20 h-20 text-emerald-600 animate-spin mb-10" />
+          <h3 className="text-2xl font-black text-slate-900 mb-4 uppercase tracking-[0.3em]">Collation Hub</h3>
+          <p className="text-slate-400 font-bold max-w-xs mb-10">Fetching your first economic cycle from the Nigerian data grid...</p>
+          
+          {showFallback && (
+            <button onClick={handleSkipLoading} className="px-10 py-5 bg-amber-50 text-amber-700 rounded-3xl font-black flex items-center gap-3 border-2 border-amber-100 hover:bg-amber-100 transition-all">
+              <AlertCircle /> Connection Slow? Skip to Hustle
+            </button>
+          )}
         </div>
       )}
 
       {status === GameStatus.PLAYING && stats && (
-        <div className="space-y-8 animate-in fade-in duration-300">
-          <header className="flex justify-between items-center bg-white p-5 rounded-[2.5rem] shadow-xl border border-slate-100">
-            <h1 className="text-2xl font-black flex items-center gap-3"><Coins className="text-emerald-500" /> NairaWise</h1>
-            <nav className="flex gap-1 p-1 bg-slate-50 rounded-2xl border">
-              {['scenario', 'market', 'leaderboard'].map(tab => (
-                <button key={tab} onClick={() => setActiveTab(tab as any)} className={`px-6 py-2.5 rounded-xl text-[11px] font-black uppercase transition-all ${activeTab === tab ? 'bg-white text-slate-900 shadow-md' : 'text-slate-400'}`}>{tab}</button>
+        <div className="space-y-8 animate-in fade-in duration-500">
+          <header className="flex justify-between items-center bg-white p-6 rounded-[2.5rem] shadow-xl border border-slate-100">
+            <div className="flex items-center gap-3">
+              <Coins className="text-emerald-500 w-8 h-8" />
+              <h1 className="text-2xl font-black tracking-tighter">NairaWise</h1>
+            </div>
+            <nav className="flex gap-2 p-1 bg-slate-50 rounded-2xl">
+              {['scenario', 'market', 'history'].map(tab => (
+                <button key={tab} onClick={() => setActiveTab(tab as any)} className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === tab ? 'bg-white text-slate-900 shadow-md' : 'text-slate-400'}`}>{tab}</button>
               ))}
             </nav>
           </header>
 
-          {activeTab === 'leaderboard' ? (
-            <div className="bg-slate-900 p-12 rounded-[3.5rem] text-white animate-in zoom-in duration-200 relative overflow-hidden">
-              <Trophy className="absolute -bottom-10 -right-10 w-64 h-64 text-white/5 -rotate-12" />
-              <h3 className="text-3xl font-black mb-8">Naira Board</h3>
-              <div className="space-y-4">
-                {leaderboard.map((e, i) => (
-                  <div key={i} className="flex justify-between p-6 bg-white/5 rounded-3xl border border-white/5 items-center">
-                    <span className="font-bold">{i+1}. {e.name} <span className="text-slate-500 text-xs italic ml-2">{e.city}</span></span>
-                    <span className="text-emerald-400 font-black text-xl">₦{e.netAssets.toLocaleString()}</span>
-                  </div>
-                ))}
-              </div>
-              {stats.name && (
-                <button onClick={() => { if(confirm("End this legacy?")) handleRetire(); }} className="mt-10 w-full py-5 bg-rose-500 hover:bg-rose-600 text-white rounded-[2rem] font-black flex items-center justify-center gap-3 transition-all"><LogOut /> Retire & Archive</button>
-              )}
-            </div>
-          ) : activeTab === 'market' ? (
-            <StockMarket 
-              stocks={stocks} 
-              portfolio={portfolio} 
-              news={[]} 
-              onBuy={handleBuy} 
-              onSell={handleSell} 
-              balance={stats.balance} 
-              onSetTrigger={handleSetTrigger} 
-            />
+          {activeTab === 'market' ? (
+            <StockMarket stocks={stocks} portfolio={portfolio} news={[]} onBuy={() => {}} onSell={() => {}} balance={stats.balance} onSetTrigger={() => {}} />
+          ) : activeTab === 'history' ? (
+             <div className="bg-white p-12 rounded-[3.5rem] shadow-xl border border-slate-100">
+               <h3 className="text-3xl font-black mb-10">Legacy Journal</h3>
+               <div className="space-y-4">
+                  {history.length === 0 && <p className="text-slate-400 font-bold italic">No history yet. Start making moves.</p>}
+                  {history.map((h, i) => (
+                    <div key={i} className="p-6 bg-slate-50 rounded-3xl border border-slate-100 flex justify-between items-center">
+                       <div>
+                          <p className="text-xs font-black text-indigo-500 uppercase mb-1">Week {h.week}</p>
+                          <p className="font-black text-lg">{h.title}</p>
+                          <p className="text-sm text-slate-500 italic">Decision: {h.decision}</p>
+                       </div>
+                    </div>
+                  ))}
+               </div>
+             </div>
           ) : lastConsequence ? (
-            <div className="bg-white p-16 rounded-[4rem] shadow-2xl text-center border border-slate-100 animate-in zoom-in duration-200">
-              <CheckCircle2 className="w-20 h-20 text-emerald-500 mx-auto mb-8" />
-              <h3 className="text-4xl font-black mb-6 text-slate-900">{lastConsequence.title}</h3>
-              <p className="text-2xl text-slate-500 italic mb-12 max-w-2xl mx-auto font-medium leading-relaxed">"{lastConsequence.text}"</p>
-              <button onClick={proceed} className="px-20 py-7 bg-slate-900 hover:bg-emerald-600 text-white rounded-[2.5rem] font-black text-2xl shadow-2xl transition-all active:scale-95">
-                {nextScenario ? `Week ${stats.currentWeek}` : 'Preparing Next Week...'}
+            <div className="bg-white p-20 rounded-[4.5rem] shadow-2xl text-center border border-slate-100 animate-in zoom-in duration-300">
+              <CheckCircle2 className="w-24 h-24 text-emerald-500 mx-auto mb-10" />
+              <h3 className="text-5xl font-black mb-6 text-slate-900 tracking-tight">{lastConsequence.title}</h3>
+              <p className="text-2xl text-slate-500 italic mb-14 max-w-3xl mx-auto leading-relaxed font-medium">"{lastConsequence.text}"</p>
+              <button onClick={proceed} className="px-24 py-8 bg-slate-900 hover:bg-emerald-600 text-white rounded-[3rem] font-black text-2xl shadow-2xl transition-all active:scale-95">
+                Next: Week {stats.currentWeek}
               </button>
             </div>
           ) : (
             <>
               <Dashboard stats={stats} goals={goals} netAssets={netAssets} />
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
-                <div className="bg-white rounded-[3.5rem] overflow-hidden shadow-2xl border border-slate-100 group">
-                  <img src={`https://picsum.photos/seed/${currentScenario?.imageTheme || 'money'}/800/500`} className="w-full h-80 object-cover transition-transform duration-700 group-hover:scale-105" alt="Scenario" />
-                  <div className="p-12 -mt-12 bg-white relative rounded-t-[3.5rem]">
-                    <h3 className="text-3xl font-black mb-6 tracking-tight">{currentScenario?.title}</h3>
-                    <p className="text-slate-500 text-xl leading-relaxed font-medium">{currentScenario?.description}</p>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
+                <div className="bg-white rounded-[4rem] overflow-hidden shadow-2xl border border-slate-100 relative group">
+                  <img src={`https://picsum.photos/seed/${currentScenario?.imageTheme || 'naija'}/1200/800`} className="w-full h-[400px] object-cover transition-transform duration-700 group-hover:scale-110" alt="Scenario" />
+                  <div className="p-14 -mt-14 bg-white relative rounded-t-[4rem]">
+                    <h3 className="text-4xl font-black mb-8 leading-tight tracking-tight text-slate-900">{currentScenario?.title}</h3>
+                    <p className="text-slate-500 text-2xl leading-relaxed font-medium">{currentScenario?.description}</p>
                   </div>
                 </div>
-                <div className="space-y-5">
-                  <p className="text-[11px] font-black text-slate-400 uppercase tracking-widest px-8">Decision Required</p>
+                <div className="space-y-6">
+                  <p className="text-xs font-black text-slate-400 uppercase tracking-[0.5em] px-10">Strategic Decisions</p>
                   {currentScenario?.choices.map((choice, i) => (
-                    <button key={i} onClick={() => handleChoice(choice)} className="w-full text-left p-9 bg-white border border-slate-100 hover:border-emerald-500 hover:bg-emerald-50/20 rounded-[3rem] transition-all group shadow-sm hover:shadow-xl">
-                      <p className="font-black text-2xl mb-2 group-hover:text-emerald-700 leading-tight">{choice.text}</p>
-                      <span className="text-[10px] font-black text-slate-400 uppercase flex items-center gap-2"><Banknote size={16} /> Impact Analysis Pending</span>
+                    <button key={i} onClick={() => handleChoice(choice)} className="w-full text-left p-12 bg-white border-2 border-slate-50 hover:border-emerald-500 hover:bg-emerald-50/20 rounded-[3.5rem] transition-all group shadow-sm hover:shadow-2xl">
+                      <p className="font-black text-3xl mb-3 group-hover:text-emerald-700 leading-tight">{choice.text}</p>
+                      <span className="text-xs font-bold text-slate-400 uppercase flex items-center gap-2 tracking-widest">
+                        <Banknote size={18} /> Impact Cycle Pending
+                      </span>
                     </button>
                   ))}
                 </div>
