@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { 
   PlayerStats, 
   Scenario, 
@@ -12,14 +12,13 @@ import {
   Goal,
   LeaderboardEntry
 } from './types';
-import { getNextScenario } from './services/geminiService';
-import Dashboard from './components/Dashboard';
-import StockMarket from './components/StockMarket';
+import { getNextScenario } from './geminiService';
+import Dashboard from './Dashboard';
+import StockMarket from './StockMarket';
 import { 
   Loader2, 
   Coins, 
   CheckCircle2, 
-  Bell,
   UserCircle2,
   Banknote,
   Target,
@@ -28,11 +27,9 @@ import {
   MapPin,
   ShieldAlert,
   GraduationCap,
-  Briefcase,
   ChevronRight,
   TrendingUp,
   History,
-  Zap,
   Trophy,
   Share2,
   LogOut
@@ -60,10 +57,10 @@ const ALL_NIGERIAN_STATES = [
 ];
 
 const CHALLENGES = [
-  { id: 'black-tax', name: 'Heavy Black Tax', icon: Heart, description: 'Family expects a cut of every Naira you make.' },
-  { id: 'no-capital', name: 'Zero Capital', icon: Banknote, description: 'Start with ₦0 in savings and high bills.' },
-  { id: 'student-debt', name: 'Massive Student Debt', icon: GraduationCap, description: '₦500k debt at 10% weekly interest.' },
-  { id: 'fresh-start', name: 'Silver Spoon (Mini)', icon: Sparkles, description: 'Start with a small inheritance (₦200k).' }
+  { id: 'black-tax', name: 'Heavy Black Tax', icon: Heart, description: 'Family needs a cut of everything.' },
+  { id: 'no-capital', name: 'Zero Capital', icon: Banknote, description: 'Start with ₦0 and bills.' },
+  { id: 'student-debt', name: 'Student Debt', icon: GraduationCap, description: '₦500k debt with interest.' },
+  { id: 'fresh-start', name: 'Silver Spoon', icon: Sparkles, description: '₦200k inheritance start.' }
 ];
 
 const App: React.FC = () => {
@@ -74,431 +71,296 @@ const App: React.FC = () => {
   const [nextScenario, setNextScenario] = useState<Scenario | null>(null);
   const [history, setHistory] = useState<GameLog[]>([]);
   const [lastConsequence, setLastConsequence] = useState<{text: string; title: string} | null>(null);
-  const [loadingNext, setLoadingNext] = useState(false);
   const [activeTab, setActiveTab] = useState<'scenario' | 'market' | 'history' | 'leaderboard'>('scenario');
   const [stocks, setStocks] = useState<Stock[]>(INITIAL_STOCKS);
   const [portfolio, setPortfolio] = useState<PortfolioItem[]>([]);
-  const [marketNews, setMarketNews] = useState<MarketNews[]>([]);
-  const [notifications, setNotifications] = useState<string[]>([]);
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
+  const isPrefetching = useRef(false);
 
   const [setupData, setSetupData] = useState({
     name: '',
     age: 22,
-    job: 'Junior Accountant',
-    salary: 85000,
+    job: 'Hustler',
+    salary: 100000,
     city: 'Lagos',
     challengeId: 'no-capital',
     selectedGoalId: 'save-1m'
   });
 
-  useEffect(() => {
-    const saved = localStorage.getItem('nairawise_1000w_v2');
-    const savedLeaderboard = localStorage.getItem('nairawise_leaderboard');
-    
-    if (savedLeaderboard) setLeaderboard(JSON.parse(savedLeaderboard));
-    
-    if (saved) {
-      try {
-        const data = JSON.parse(saved);
-        if (data.status === GameStatus.PLAYING) {
-          setStats(data.stats);
-          setGoals(data.goals);
-          setHistory(data.history);
-          setStocks(data.stocks || INITIAL_STOCKS);
-          setPortfolio(data.portfolio || []);
-          setMarketNews(data.marketNews || []);
-          setCurrentScenario(data.currentScenario);
-          setStatus(GameStatus.PLAYING);
-          prefetchScenario(data.stats, data.history);
-        }
-      } catch (e) { console.error("Restore failed", e); }
-    }
+  const prefetchNext = useCallback(async (s: PlayerStats, h: GameLog[]) => {
+    if (isPrefetching.current) return;
+    isPrefetching.current = true;
+    try {
+      const scenario = await getNextScenario(s, h);
+      setNextScenario(scenario);
+    } catch (e) { console.error("Prefetch failed", e); }
+    isPrefetching.current = false;
   }, []);
 
   useEffect(() => {
-    if (status === GameStatus.PLAYING && stats) {
-      localStorage.setItem('nairawise_1000w_v2', JSON.stringify({
-        status, stats, goals, history, stocks, portfolio, marketNews, currentScenario
-      }));
+    const saved = localStorage.getItem('nairawise_v4');
+    const savedLB = localStorage.getItem('nairawise_leaderboard_v4');
+    if (savedLB) setLeaderboard(JSON.parse(savedLB));
+    if (saved) {
+      try {
+        const data = JSON.parse(saved);
+        setStats(data.stats);
+        setGoals(data.goals);
+        setHistory(data.history);
+        setStocks(data.stocks || INITIAL_STOCKS);
+        setPortfolio(data.portfolio || []);
+        setCurrentScenario(data.currentScenario);
+        setStatus(GameStatus.PLAYING);
+        prefetchNext(data.stats, data.history);
+      } catch (e) { console.error(e); }
     }
-    localStorage.setItem('nairawise_leaderboard', JSON.stringify(leaderboard));
-  }, [status, stats, goals, history, stocks, portfolio, marketNews, currentScenario, leaderboard]);
+  }, [prefetchNext]);
 
-  const prefetchScenario = async (currentStats: PlayerStats, gameHistory: GameLog[]) => {
-    if (loadingNext) return;
-    setLoadingNext(true);
-    try {
-      const scenario = await getNextScenario(currentStats, gameHistory);
-      setNextScenario(scenario);
-    } catch (e) { console.error(e); }
-    setLoadingNext(false);
-  };
+  useEffect(() => {
+    if (status === GameStatus.PLAYING && stats) {
+      localStorage.setItem('nairawise_v4', JSON.stringify({ stats, goals, history, stocks, portfolio, currentScenario, status }));
+    }
+    localStorage.setItem('nairawise_leaderboard_v4', JSON.stringify(leaderboard));
+  }, [status, stats, goals, history, stocks, portfolio, currentScenario, leaderboard]);
 
-  const calculateNetAssets = (currentStats: PlayerStats | null, currentPortfolio: PortfolioItem[]) => {
-    if (!currentStats) return 0;
-    const portfolioValue = currentPortfolio.reduce((total, p) => {
-      const stock = stocks.find(s => s.id === p.stockId);
-      return total + (stock ? stock.price * p.shares : 0);
+  const calculateNetAssets = (s: PlayerStats | null, p: PortfolioItem[]) => {
+    if (!s) return 0;
+    const pVal = p.reduce((total, item) => {
+      const stock = stocks.find(st => st.id === item.stockId);
+      return total + (stock ? stock.price * item.shares : 0);
     }, 0);
-    return currentStats.balance + currentStats.savings + portfolioValue - currentStats.debt;
+    return s.balance + s.savings + pVal - s.debt;
   };
 
-  const getWealthRank = (netAssets: number) => {
-    if (netAssets >= 100000000) return "Pan-African Legend";
-    if (netAssets >= 20000000) return "Oga at the Top";
-    if (netAssets >= 5000000) return "Confirmed Boss";
-    if (netAssets >= 1000000) return "Middle Class Sapa-Survivor";
-    if (netAssets < 0) return "Dept-Ridden Debtor";
-    return "Hustler Extraordinaire";
+  // Fix: Implemented handleBuy to process stock purchases and update balance.
+  const handleBuy = (stockId: string) => {
+    if (!stats) return;
+    const stock = stocks.find(s => s.id === stockId);
+    if (!stock || stats.balance < stock.price) return;
+    setStats({ ...stats, balance: stats.balance - stock.price });
+    setPortfolio(prev => {
+      const existing = prev.find(p => p.stockId === stockId);
+      if (existing) {
+        return prev.map(p => p.stockId === stockId ? { ...p, shares: p.shares + 1 } : p);
+      }
+      return [...prev, { stockId, shares: 1, averagePrice: stock.price }];
+    });
   };
 
+  // Fix: Implemented handleSell to process stock sales and update balance.
+  const handleSell = (stockId: string) => {
+    if (!stats) return;
+    const stock = stocks.find(s => s.id === stockId);
+    const holding = portfolio.find(p => p.stockId === stockId);
+    if (!stock || !holding || holding.shares <= 0) return;
+    setStats({ ...stats, balance: stats.balance + stock.price });
+    setPortfolio(prev => prev.map(p => p.stockId === stockId ? { ...p, shares: p.shares - 1 } : p).filter(p => p.shares > 0));
+  };
+
+  // Fix: Implemented handleSetTrigger to update portfolio stop-loss and take-profit values.
+  const handleSetTrigger = (stockId: string, type: 'stopLoss' | 'takeProfit', value: number | undefined) => {
+    setPortfolio(prev => prev.map(p => p.stockId === stockId ? { ...p, [type]: value } : p));
+  };
+
+  // Fix: Implemented handleRetire to archive game session and record final net assets on leaderboard.
   const handleRetire = () => {
     if (!stats) return;
-    const netAssets = calculateNetAssets(stats, portfolio);
+    const finalAssets = calculateNetAssets(stats, portfolio);
     const entry: LeaderboardEntry = {
       name: stats.name,
       city: stats.city,
-      netAssets,
+      netAssets: finalAssets,
       week: stats.currentWeek,
-      rank: getWealthRank(netAssets),
+      rank: finalAssets > 50000000 ? 'Industrialist' : finalAssets > 5000000 ? 'Oga' : 'Hustler',
       timestamp: Date.now()
     };
-    
-    setLeaderboard(prev => [...prev, entry].sort((a, b) => b.netAssets - a.netAssets).slice(0, 20));
-    alert(`Retired as a ${entry.rank} with ₦${netAssets.toLocaleString()}!`);
+    const newLB = [...leaderboard, entry].sort((a, b) => b.netAssets - a.netAssets).slice(0, 10);
+    setLeaderboard(newLB);
+    localStorage.removeItem('nairawise_v4');
+    setStats(null);
+    setHistory([]);
+    setPortfolio([]);
+    setCurrentScenario(null);
+    setNextScenario(null);
     setStatus(GameStatus.START);
-    localStorage.removeItem('nairawise_1000w_v2');
   };
 
   const handleFinishSetup = async () => {
-    if (!setupData.name) { alert("Oga, tell us your name!"); return; }
-
-    const initialStats: PlayerStats = {
-      name: setupData.name,
-      age: setupData.age,
-      job: setupData.job,
-      salary: setupData.salary,
-      balance: setupData.salary,
+    if (!setupData.name) return alert("Oga, name please!");
+    const initial = {
+      name: setupData.name, age: setupData.age, job: setupData.job,
+      salary: setupData.salary, balance: setupData.salary,
       savings: setupData.challengeId === 'fresh-start' ? 200000 : 0,
       debt: setupData.challengeId === 'student-debt' ? 500000 : 0,
-      happiness: setupData.challengeId === 'black-tax' ? 60 : 80,
-      currentWeek: 1,
-      city: setupData.city,
+      happiness: 80, currentWeek: 1, city: setupData.city,
       challenge: CHALLENGES.find(c => c.id === setupData.challengeId)?.name || ''
     };
-
-    const initialGoal = PRESET_GOALS.find(g => g.id === setupData.selectedGoalId)!;
-
     setStatus(GameStatus.LOADING);
-    setStats(initialStats);
-    setGoals([{ ...initialGoal }]);
-    
+    setStats(initial);
+    setGoals([{ ...PRESET_GOALS.find(g => g.id === setupData.selectedGoalId)! }]);
     try {
-      const scenario = await getNextScenario(initialStats, []);
+      const scenario = await getNextScenario(initial, []);
       setCurrentScenario(scenario);
       setStatus(GameStatus.PLAYING);
-      prefetchScenario(initialStats, []);
-    } catch (e) {
-      console.error(e);
-      setStatus(GameStatus.SETUP);
-    }
+      prefetchNext(initial, []);
+    } catch (e) { setStatus(GameStatus.SETUP); }
   };
 
   const handleChoice = async (choice: Choice) => {
     if (!currentScenario || !stats) return;
-    
-    const debtInterest = stats.debt > 0 ? Math.floor(stats.debt * 0.02) : 0;
-    const newStats = {
+    const nextStats = {
       ...stats,
       balance: Math.max(0, stats.balance + choice.impact.balance),
       savings: Math.max(0, stats.savings + choice.impact.savings),
-      debt: Math.max(0, stats.debt + choice.impact.debt + debtInterest),
+      debt: Math.max(0, stats.debt + choice.impact.debt),
       happiness: Math.min(100, Math.max(0, stats.happiness + choice.impact.happiness)),
       currentWeek: stats.currentWeek + 1
     };
-    
-    const netAssets = calculateNetAssets(newStats, portfolio);
-    const updatedGoals = goals.map(g => {
-      if (!g.completed && netAssets >= g.target) {
-        setNotifications(prev => [...prev, `🎉 DREAM REALIZED: ${g.title}!`]);
-        return { ...g, completed: true };
-      }
-      return g;
-    });
-
-    setGoals(updatedGoals);
-    setHistory([...history, { 
-      week: stats.currentWeek, 
-      title: currentScenario.title, 
-      decision: choice.text, 
-      consequence: choice.consequence 
-    }]);
-    setStats(newStats);
+    const assets = calculateNetAssets(nextStats, portfolio);
+    setGoals(goals.map(g => (assets >= g.target && !g.completed) ? { ...g, completed: true } : g));
+    const entry = { week: stats.currentWeek, title: currentScenario.title, decision: choice.text, consequence: choice.consequence };
+    setHistory([...history, entry]);
+    setStats(nextStats);
     setLastConsequence({ text: choice.consequence, title: currentScenario.title });
-
-    // Pre-fetch if we haven't already
-    if (!nextScenario && !loadingNext) {
-        prefetchScenario(newStats, history);
-    }
+    
+    // Start prefetching IMMEDIATELY
+    if (!nextScenario) prefetchNext(nextStats, [...history, entry]);
   };
 
-  const proceedToNextWeek = () => {
-    if (!stats) return;
-    setNotifications([]);
-    if (nextScenario) {
-      // Basic market update
-      setStocks(prev => prev.map(s => ({
-        ...s,
+  const proceed = () => {
+    if (nextScenario && stats) {
+      setStocks(stocks.map(s => ({ 
+        ...s, 
         price: Math.max(10, Math.round(s.price * (1 + (Math.random() * 0.1 - 0.05)))),
-        history: [...s.history, s.price].slice(-20)
+        history: [...s.history, s.price].slice(-20) 
       })));
-      
       setCurrentScenario(nextScenario);
       setLastConsequence(null);
       setNextScenario(null);
-      // Immediately start pre-fetching the one after that
-      prefetchScenario(stats, history);
+      prefetchNext(stats, history);
     } else {
-      // If next scenario isn't ready yet, only show a loader until it is.
-      // We don't want to add artificial delays.
       setStatus(GameStatus.LOADING);
-      const checkReady = setInterval(() => {
-          if (nextScenario) {
-              clearInterval(checkReady);
-              setStatus(GameStatus.PLAYING);
-              proceedToNextWeek();
-          }
-      }, 100);
+      const check = setInterval(() => {
+        if (nextScenario) { clearInterval(check); setStatus(GameStatus.PLAYING); proceed(); }
+      }, 50);
     }
   };
 
   const netAssets = calculateNetAssets(stats, portfolio);
 
   return (
-    <div className="min-h-screen max-w-6xl mx-auto px-4 py-10 selection:bg-indigo-100">
+    <div className="min-h-screen max-w-6xl mx-auto px-4 py-8 selection:bg-emerald-100">
       {status === GameStatus.START && (
-        <div className="max-w-4xl mx-auto space-y-10 animate-in zoom-in duration-300">
-          <div className="bg-white rounded-[3.5rem] p-20 shadow-2xl text-center border border-slate-100 relative overflow-hidden">
-            <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-emerald-500 via-indigo-500 to-rose-500"></div>
-            <div className="bg-emerald-50 w-28 h-28 rounded-[2rem] flex items-center justify-center mx-auto mb-10 shadow-inner">
-              <Sparkles className="w-14 h-14 text-emerald-600" />
-            </div>
-            <h2 className="text-7xl font-black text-slate-900 mb-8 tracking-tighter leading-tight">1000 Weeks to <br /><span className="text-emerald-600">Legendary Wealth.</span></h2>
-            <div className="flex justify-center gap-4 mb-14">
-              <button onClick={() => setStatus(GameStatus.SETUP)} className="px-16 py-8 bg-slate-900 hover:bg-indigo-600 text-white rounded-[2.5rem] font-black text-2xl transition-all shadow-2xl hover:scale-105 active:scale-95 flex items-center gap-4">
-                Build Your Persona <ChevronRight className="w-8 h-8" />
+        <div className="max-w-4xl mx-auto text-center space-y-12 py-20 animate-in zoom-in duration-200">
+          <div className="bg-white rounded-[3rem] p-16 shadow-2xl border border-slate-100">
+            <h2 className="text-7xl font-black text-slate-900 mb-6 tracking-tighter">NairaWise</h2>
+            <p className="text-xl text-slate-500 font-bold mb-10">The #1 Nigerian Financial Survival Game</p>
+            <div className="flex justify-center gap-4">
+              <button onClick={() => setStatus(GameStatus.SETUP)} className="px-14 py-6 bg-slate-900 hover:bg-emerald-600 text-white rounded-[2rem] font-black text-2xl flex items-center gap-4 transition-all hover:scale-105 active:scale-95 shadow-xl">
+                Build Legend <ChevronRight />
               </button>
-              <button onClick={() => {setStatus(GameStatus.PLAYING); setActiveTab('leaderboard'); setStats({} as any)}} className="px-8 py-8 bg-amber-50 text-amber-600 border border-amber-200 rounded-[2.5rem] font-black text-xl hover:bg-amber-100 transition-all">
-                <Trophy className="w-8 h-8" />
+              <button onClick={() => {setStatus(GameStatus.PLAYING); setActiveTab('leaderboard')}} className="p-6 bg-amber-50 text-amber-600 rounded-[2rem] border border-amber-200 hover:bg-amber-100 transition-all">
+                <Trophy size={32} />
               </button>
             </div>
           </div>
-          
-          {/* Quick Hall of Fame Preview */}
-          {leaderboard.length > 0 && (
-            <div className="bg-white p-10 rounded-[3rem] border border-slate-100 shadow-xl">
-               <h3 className="text-2xl font-black mb-6 flex items-center gap-3"><Trophy className="text-amber-500" /> NairaWise Hall of Fame</h3>
-               <div className="space-y-4">
-                  {leaderboard.slice(0, 3).map((e, i) => (
-                    <div key={i} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl">
-                       <div className="flex items-center gap-4">
-                          <span className="text-2xl font-black text-slate-300">#{i+1}</span>
-                          <div>
-                            <p className="font-black text-slate-900">{e.name}</p>
-                            <p className="text-xs text-slate-400">{e.city} • {e.rank}</p>
-                          </div>
-                       </div>
-                       <p className="text-xl font-black text-emerald-600">₦{e.netAssets.toLocaleString()}</p>
-                    </div>
-                  ))}
-               </div>
-            </div>
-          )}
         </div>
       )}
 
       {status === GameStatus.SETUP && (
-        <div className="max-w-5xl mx-auto space-y-10 animate-in slide-in-from-bottom-6 duration-300">
-          <header className="flex justify-between items-end">
-             <div>
-                <h2 className="text-5xl font-black text-slate-900">Your Identity</h2>
-                <p className="text-slate-400 font-bold uppercase tracking-[0.3em] mt-2">Targeting all 36 States</p>
-             </div>
-             <MapPin className="w-12 h-12 text-emerald-500" />
-          </header>
-
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            <section className="lg:col-span-2 bg-white p-12 rounded-[3rem] shadow-xl border border-slate-100 space-y-8">
-              <h3 className="text-2xl font-black flex items-center gap-3"><UserCircle2 className="w-8 h-8 text-emerald-600" /> Identity & Economy</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                <div className="space-y-2">
-                  <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest block px-1">Full Name</label>
-                  <input type="text" value={setupData.name} onChange={e => setSetupData({...setupData, name: e.target.value})} className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-3xl focus:border-indigo-500 outline-none font-bold text-lg" placeholder="e.g. Ebuka" />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest block px-1">Regional HQ (State)</label>
-                  <select value={setupData.city} onChange={e => setSetupData({...setupData, city: e.target.value})} className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-3xl focus:border-indigo-500 outline-none font-bold text-lg">
-                    {ALL_NIGERIAN_STATES.map(s => <option key={s} value={s}>{s}</option>)}
-                  </select>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest block px-1">Career / Role</label>
-                  <input type="text" value={setupData.job} onChange={e => setSetupData({...setupData, job: e.target.value})} className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-3xl focus:border-indigo-500 outline-none font-bold text-lg" />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest block px-1">Monthly Salary (₦)</label>
-                  <input type="number" value={setupData.salary} onChange={e => setSetupData({...setupData, salary: Number(e.target.value)})} className="w-full p-5 bg-emerald-50 border-2 border-emerald-100 rounded-3xl focus:border-emerald-500 outline-none font-bold text-lg text-emerald-700" />
-                </div>
-              </div>
-            </section>
-
-            <section className="space-y-6">
-              <div className="bg-white p-10 rounded-[3rem] shadow-xl border border-slate-100">
-                <h3 className="text-xl font-black flex items-center gap-3 mb-6"><ShieldAlert className="w-6 h-6 text-rose-500" /> Initial Challenge</h3>
-                <div className="space-y-3">
-                  {CHALLENGES.map(c => (
-                    <button key={c.id} onClick={() => setSetupData({...setupData, challengeId: c.id})} className={`w-full p-5 rounded-[2rem] border-2 text-left transition-all ${setupData.challengeId === c.id ? 'border-rose-500 bg-rose-50' : 'border-slate-50 hover:border-slate-200'}`}>
-                      <div className="flex items-center gap-3 mb-1">
-                        <c.icon className={`w-5 h-5 ${setupData.challengeId === c.id ? 'text-rose-600' : 'text-slate-400'}`} />
-                        <p className="font-black text-sm">{c.name}</p>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </section>
+        <div className="max-w-3xl mx-auto bg-white p-12 rounded-[3rem] shadow-2xl border border-slate-100 space-y-8 animate-in slide-in-from-bottom-4 duration-200">
+          <h2 className="text-4xl font-black flex items-center gap-3"><UserCircle2 className="text-emerald-600" /> Identity</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <input type="text" value={setupData.name} onChange={e => setSetupData({...setupData, name: e.target.value})} placeholder="Full Name" className="p-5 bg-slate-50 border rounded-2xl font-bold focus:ring-2 ring-emerald-500 outline-none" />
+            <select value={setupData.city} onChange={e => setSetupData({...setupData, city: e.target.value})} className="p-5 bg-slate-50 border rounded-2xl font-bold">
+              {ALL_NIGERIAN_STATES.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
           </div>
-
-          <button onClick={handleFinishSetup} className="w-full py-8 bg-slate-900 hover:bg-emerald-600 text-white rounded-[3rem] font-black text-2xl shadow-2xl transition-all">Initialize Wealth Cycle</button>
+          <div className="grid grid-cols-2 gap-4">
+            {CHALLENGES.map(c => (
+              <button key={c.id} onClick={() => setSetupData({...setupData, challengeId: c.id})} className={`p-5 border-2 rounded-3xl text-left transition-all ${setupData.challengeId === c.id ? 'border-emerald-500 bg-emerald-50' : 'border-slate-100 hover:bg-slate-50'}`}>
+                <p className="font-black text-sm">{c.name}</p>
+              </button>
+            ))}
+          </div>
+          <button onClick={handleFinishSetup} className="w-full py-6 bg-slate-900 text-white rounded-[2rem] font-black text-2xl hover:bg-emerald-600 transition-all shadow-xl">Start Lifecycle</button>
         </div>
       )}
 
       {status === GameStatus.LOADING && (
         <div className="flex flex-col items-center justify-center py-48">
-          <Loader2 className="w-24 h-24 text-emerald-600 animate-spin" />
-          <p className="text-slate-400 font-black uppercase text-sm tracking-[0.5em] mt-10 animate-pulse">Syncing with Nigerian Bureau of Stats...</p>
+          <Loader2 className="w-16 h-16 text-emerald-600 animate-spin" />
+          <p className="mt-8 font-black text-slate-400 uppercase tracking-[0.4em] text-sm">Syncing Scenarios...</p>
         </div>
       )}
 
       {status === GameStatus.PLAYING && stats && (
-        <div className="space-y-10 animate-in fade-in duration-300">
-          <header className="flex justify-between items-center bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-xl">
-            <div className="flex items-center gap-4">
-              <div className="bg-slate-900 p-3.5 rounded-2xl shadow-xl"><Coins className="w-8 h-8 text-white" /></div>
-              <h1 className="text-3xl font-black text-slate-900 tracking-tight">NairaWise</h1>
-            </div>
-            <div className="flex gap-2 p-2 bg-slate-50 rounded-[2rem] border border-slate-100">
-              <button onClick={() => setActiveTab('scenario')} className={`px-6 py-3 rounded-2xl text-[11px] font-black transition-all ${activeTab === 'scenario' ? 'bg-white text-slate-900 shadow-lg' : 'text-slate-400'}`}>LIFE</button>
-              <button onClick={() => setActiveTab('market')} className={`px-6 py-3 rounded-2xl text-[11px] font-black transition-all ${activeTab === 'market' ? 'bg-white text-slate-900 shadow-lg' : 'text-slate-400'}`}>MARKET</button>
-              <button onClick={() => setActiveTab('history')} className={`px-6 py-3 rounded-2xl text-[11px] font-black transition-all ${activeTab === 'history' ? 'bg-white text-slate-900 shadow-lg' : 'text-slate-400'}`}>JOURNAL</button>
-              <button onClick={() => setActiveTab('leaderboard')} className={`px-6 py-3 rounded-2xl text-[11px] font-black transition-all ${activeTab === 'leaderboard' ? 'bg-white text-slate-900 shadow-lg' : 'text-slate-400'}`}>BOARD</button>
-            </div>
+        <div className="space-y-8 animate-in fade-in duration-300">
+          <header className="flex justify-between items-center bg-white p-5 rounded-[2.5rem] shadow-xl border border-slate-100">
+            <h1 className="text-2xl font-black flex items-center gap-3"><Coins className="text-emerald-500" /> NairaWise</h1>
+            <nav className="flex gap-1 p-1 bg-slate-50 rounded-2xl border">
+              {['scenario', 'market', 'leaderboard'].map(tab => (
+                <button key={tab} onClick={() => setActiveTab(tab as any)} className={`px-6 py-2.5 rounded-xl text-[11px] font-black uppercase transition-all ${activeTab === tab ? 'bg-white text-slate-900 shadow-md' : 'text-slate-400'}`}>{tab}</button>
+              ))}
+            </nav>
           </header>
 
           {activeTab === 'leaderboard' ? (
-            <div className="max-w-4xl mx-auto space-y-10 animate-in zoom-in duration-300">
-               <div className="bg-slate-900 p-12 rounded-[3.5rem] text-white relative overflow-hidden">
-                  <Trophy className="absolute top-0 right-0 w-64 h-64 text-white/5 -rotate-12" />
-                  <h3 className="text-4xl font-black mb-10 flex items-center gap-4"><Trophy className="text-amber-400" /> Collation Hub</h3>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-10">
-                     <div className="bg-white/10 p-8 rounded-[2rem] border border-white/10">
-                        <p className="text-xs font-black uppercase text-slate-400 tracking-widest mb-2">Your Current Legend</p>
-                        <p className="text-3xl font-black text-emerald-400">₦{netAssets.toLocaleString()}</p>
-                        <p className="text-sm font-bold text-slate-300 mt-2">{getWealthRank(netAssets)}</p>
-                        {stats.name && (
-                          <button onClick={handleRetire} className="mt-6 w-full py-4 bg-emerald-500 hover:bg-emerald-600 text-white rounded-2xl font-black flex items-center justify-center gap-2">
-                            <LogOut className="w-5 h-5" /> Retire & Save Score
-                          </button>
-                        )}
-                     </div>
-                     <div className="bg-white/10 p-8 rounded-[2rem] border border-white/10">
-                        <p className="text-xs font-black uppercase text-slate-400 tracking-widest mb-4">Sharing Meta</p>
-                        <button onClick={() => alert("Legend copied to clipboard!")} className="w-full py-4 bg-indigo-500 hover:bg-indigo-600 text-white rounded-2xl font-black flex items-center justify-center gap-2">
-                           <Share2 className="w-5 h-5" /> Export Wisdom
-                        </button>
-                     </div>
+            <div className="bg-slate-900 p-12 rounded-[3.5rem] text-white animate-in zoom-in duration-200 relative overflow-hidden">
+              <Trophy className="absolute -bottom-10 -right-10 w-64 h-64 text-white/5 -rotate-12" />
+              <h3 className="text-3xl font-black mb-8">Naira Board</h3>
+              <div className="space-y-4">
+                {leaderboard.map((e, i) => (
+                  <div key={i} className="flex justify-between p-6 bg-white/5 rounded-3xl border border-white/5 items-center">
+                    <span className="font-bold">{i+1}. {e.name} <span className="text-slate-500 text-xs italic ml-2">{e.city}</span></span>
+                    <span className="text-emerald-400 font-black text-xl">₦{e.netAssets.toLocaleString()}</span>
                   </div>
-
-                  <div className="space-y-4">
-                     <p className="text-xs font-black uppercase text-slate-400 tracking-widest px-4">Global Collation</p>
-                     {leaderboard.length === 0 ? (
-                       <p className="text-center py-20 text-slate-500 italic">No legends found yet. Start your journey.</p>
-                     ) : (
-                       leaderboard.map((e, i) => (
-                         <div key={i} className="flex items-center justify-between p-6 bg-white/5 rounded-3xl border border-white/5">
-                            <div className="flex items-center gap-6">
-                               <span className="text-3xl font-black text-white/10">#{i+1}</span>
-                               <div>
-                                  <p className="text-lg font-black text-white">{e.name}</p>
-                                  <p className="text-xs text-slate-400 uppercase font-black">{e.city} • {e.rank}</p>
-                               </div>
-                            </div>
-                            <div className="text-right">
-                               <p className="text-xl font-black text-emerald-400">₦{e.netAssets.toLocaleString()}</p>
-                               <p className="text-[10px] text-slate-500">Week {e.week}</p>
-                            </div>
-                         </div>
-                       ))
-                     )}
-                  </div>
-               </div>
+                ))}
+              </div>
+              {stats.name && (
+                <button onClick={() => { if(confirm("End this legacy?")) handleRetire(); }} className="mt-10 w-full py-5 bg-rose-500 hover:bg-rose-600 text-white rounded-[2rem] font-black flex items-center justify-center gap-3 transition-all"><LogOut /> Retire & Archive</button>
+              )}
+            </div>
+          ) : activeTab === 'market' ? (
+            <StockMarket 
+              stocks={stocks} 
+              portfolio={portfolio} 
+              news={[]} 
+              onBuy={handleBuy} 
+              onSell={handleSell} 
+              balance={stats.balance} 
+              onSetTrigger={handleSetTrigger} 
+            />
+          ) : lastConsequence ? (
+            <div className="bg-white p-16 rounded-[4rem] shadow-2xl text-center border border-slate-100 animate-in zoom-in duration-200">
+              <CheckCircle2 className="w-20 h-20 text-emerald-500 mx-auto mb-8" />
+              <h3 className="text-4xl font-black mb-6 text-slate-900">{lastConsequence.title}</h3>
+              <p className="text-2xl text-slate-500 italic mb-12 max-w-2xl mx-auto font-medium leading-relaxed">"{lastConsequence.text}"</p>
+              <button onClick={proceed} className="px-20 py-7 bg-slate-900 hover:bg-emerald-600 text-white rounded-[2.5rem] font-black text-2xl shadow-2xl transition-all active:scale-95">
+                {nextScenario ? `Week ${stats.currentWeek}` : 'Preparing Next Week...'}
+              </button>
             </div>
           ) : (
             <>
               <Dashboard stats={stats} goals={goals} netAssets={netAssets} />
-
-              {activeTab === 'market' ? (
-                <StockMarket stocks={stocks} portfolio={portfolio} news={marketNews} onBuy={() => {}} onSell={() => {}} balance={stats.balance} onSetTrigger={() => {}} />
-              ) : activeTab === 'history' ? (
-                <div className="bg-white p-12 rounded-[3rem] shadow-xl border border-slate-100">
-                    <h3 className="text-2xl font-black mb-8">Naira Journal</h3>
-                    <div className="space-y-4 max-h-[600px] overflow-y-auto pr-4">
-                        {[...history].reverse().map((log, i) => (
-                            <div key={i} className="p-6 bg-slate-50 rounded-3xl border border-slate-100">
-                                <div className="flex justify-between items-start mb-2">
-                                    <span className="text-[10px] font-black text-indigo-600 uppercase tracking-widest">Week {log.week}</span>
-                                    <span className="text-sm font-bold text-slate-900">{log.title}</span>
-                                </div>
-                                <p className="text-slate-500 text-sm">Action: <span className="text-slate-900 font-bold">{log.decision}</span></p>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-              ) : lastConsequence ? (
-                <div className="bg-white p-20 rounded-[4rem] shadow-2xl text-center border border-slate-100 animate-in fade-in duration-300">
-                  <CheckCircle2 className="w-16 h-16 text-emerald-600 mx-auto mb-10" />
-                  <h3 className="text-4xl font-black mb-6 text-slate-900">{lastConsequence.title}</h3>
-                  <p className="text-2xl text-slate-500 italic mb-14 max-w-2xl mx-auto font-medium">"{lastConsequence.text}"</p>
-                  <button onClick={proceedToNextWeek} className="px-20 py-7 bg-slate-900 hover:bg-emerald-600 text-white rounded-[2.5rem] font-black text-2xl transition-all shadow-2xl">
-                    {loadingNext && !nextScenario ? 'Preparing Next Week...' : `Proceed to Week ${stats.currentWeek}`}
-                  </button>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
-                  <div className="bg-white rounded-[4rem] overflow-hidden shadow-2xl border border-slate-100 relative group">
-                    <img src={`https://picsum.photos/seed/${currentScenario?.imageTheme || 'financial'}/1200/800`} className="w-full h-96 object-cover" alt="Scenario" />
-                    <div className="p-14 -mt-16 bg-white relative rounded-t-[4rem]">
-                      <h3 className="text-4xl font-black mb-8 leading-tight tracking-tight text-slate-900">{currentScenario?.title}</h3>
-                      <p className="text-slate-500 text-2xl leading-relaxed font-medium">{currentScenario?.description}</p>
-                    </div>
-                  </div>
-                  <div className="space-y-6">
-                    <p className="text-[11px] font-black text-slate-400 uppercase tracking-[0.5em] px-8">Executive Mandate</p>
-                    {currentScenario?.choices.map((choice, i) => (
-                      <button key={i} onClick={() => handleChoice(choice)} className="w-full text-left p-10 bg-white border-2 border-slate-100 hover:border-indigo-500 hover:bg-indigo-50/30 rounded-[3rem] transition-all group shadow-sm hover:shadow-2xl relative">
-                        <p className="font-black text-2xl mb-4 group-hover:text-indigo-700 leading-tight pr-4">{choice.text}</p>
-                        <div className="flex gap-6">
-                          <span className="text-[10px] font-black text-slate-400 uppercase flex items-center gap-2">
-                            <Banknote className="w-4 h-4" /> ₦ Liquidity Impact
-                          </span>
-                        </div>
-                      </button>
-                    ))}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
+                <div className="bg-white rounded-[3.5rem] overflow-hidden shadow-2xl border border-slate-100 group">
+                  <img src={`https://picsum.photos/seed/${currentScenario?.imageTheme || 'money'}/800/500`} className="w-full h-80 object-cover transition-transform duration-700 group-hover:scale-105" alt="Scenario" />
+                  <div className="p-12 -mt-12 bg-white relative rounded-t-[3.5rem]">
+                    <h3 className="text-3xl font-black mb-6 tracking-tight">{currentScenario?.title}</h3>
+                    <p className="text-slate-500 text-xl leading-relaxed font-medium">{currentScenario?.description}</p>
                   </div>
                 </div>
-              )}
+                <div className="space-y-5">
+                  <p className="text-[11px] font-black text-slate-400 uppercase tracking-widest px-8">Decision Required</p>
+                  {currentScenario?.choices.map((choice, i) => (
+                    <button key={i} onClick={() => handleChoice(choice)} className="w-full text-left p-9 bg-white border border-slate-100 hover:border-emerald-500 hover:bg-emerald-50/20 rounded-[3rem] transition-all group shadow-sm hover:shadow-xl">
+                      <p className="font-black text-2xl mb-2 group-hover:text-emerald-700 leading-tight">{choice.text}</p>
+                      <span className="text-[10px] font-black text-slate-400 uppercase flex items-center gap-2"><Banknote size={16} /> Impact Analysis Pending</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
             </>
           )}
         </div>

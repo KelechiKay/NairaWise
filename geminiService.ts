@@ -8,7 +8,7 @@ export const getNextScenario = async (
   stats: PlayerStats,
   history: GameLog[]
 ): Promise<Scenario> => {
-  const historyContext = history.slice(-5).map(h => `Week ${h.week}: ${h.decision}`).join('\n');
+  const historyContext = history.slice(-3).map(h => `Week ${h.week}: ${h.decision}`).join('\n');
 
   // Determine complexity phase
   let phase = "SURVIVAL (Sapa Era)";
@@ -17,43 +17,26 @@ export const getNextScenario = async (
   else if (stats.currentWeek > 50) phase = "GROWTH (Hustle Era)";
 
   const prompt = `
-    Create a highly complex financial scenario for a Nigerian citizen.
+    Create a financial scenario for a Nigerian citizen.
     
-    PLAYER PROFILE:
-    - Name: ${stats.name}
-    - Age: ${stats.age}
-    - Job: ${stats.job}
-    - Location: ${stats.city}
-    - Challenge: ${stats.challenge}
-    - Monthly Income: ₦${stats.salary.toLocaleString()}
-    
-    GAME PROGRESS:
-    - Current Week: ${stats.currentWeek} / 1000
-    - Phase: ${phase}
-    - Balance: ₦${stats.balance}
-    - Debt: ₦${stats.debt}
-    - Happiness: ${stats.happiness}%
+    PLAYER: ${stats.name}, ${stats.job} in ${stats.city}.
+    WEEK: ${stats.currentWeek}/1000 (${phase}).
+    STATS: Balance ₦${stats.balance}, Debt ₦${stats.debt}, Happiness ${stats.happiness}%.
+    RECENT ACTIONS: ${historyContext}
 
-    GUIDELINES FOR COMPLEXITY:
-    1. ${phase === "SURVIVAL (Sapa Era)" ? "Focus on micro-decisions: transportation, daily food, family requests, and small savings." : ""}
-    2. ${phase === "GROWTH (Hustle Era)" ? "Focus on side-businesses, formal investments, tax management, and skill acquisition." : ""}
-    3. ${phase === "EXPANSION (Oga Era)" ? "Focus on real estate, institutional debt, family legacies, and industry competition." : ""}
-    4. ${phase === "LEGACY (Billionaire Era)" ? "Focus on macro-economic shifts, national politics, philanthropy, and wealth preservation." : ""}
-    
-    5. CITY IMPACT: Reflect ${stats.city}'s specific economy (e.g., Lagos traffic/tech vs Kano trade/agri).
-    6. CHALLENGE: If they have "Black Tax", the relatives must be more persistent as they get richer.
-    7. CHOICES: Provide 3 distinct strategies:
-       A: Prudent & Long-term (low immediate gain, high future stability)
-       B: Social & High-status (high happiness/network, high cost)
-       C: Risky & Aggressive (chance of massive gain or total loss)
+    GUIDELINES:
+    1. Local Flavor: Use specific economic conditions of ${stats.city} (e.g. trade in Aba, civil service in Abuja, tech in Yaba).
+    2. Slang: Use localized Nigerian Pidgin/slang naturally.
+    3. Choices: 
+       - Prudent (Low risk, small gain)
+       - Social (High cost for networking/status)
+       - Risky (High growth potential but can backfire)
 
     RESPONSE FORMAT: JSON only.
-    Recent History:
-    ${historyContext}
   `;
 
   const response = await ai.models.generateContent({
-    model: 'gemini-3-pro-preview',
+    model: 'gemini-3-flash-preview',
     contents: prompt,
     config: {
       responseMimeType: "application/json",
@@ -83,21 +66,23 @@ export const getNextScenario = async (
               },
               required: ["text", "consequence", "impact"]
             }
-          },
-          marketEvent: {
-            type: Type.OBJECT,
-            properties: {
-              headline: { type: Type.STRING },
-              impact: { type: Type.STRING },
-              stockId: { type: Type.STRING }
-            }
           }
         },
         required: ["title", "description", "choices", "imageTheme"]
       },
-      systemInstruction: "You are the 'Supreme Financial Oracle' of Nigeria. Your goal is to simulate the complex reality of building wealth in Nigeria over 1000 weeks."
+      systemInstruction: "You are NairaWise, a fast and immersive financial literacy engine for Nigerians. Keep responses punchy and realistic."
     }
   });
 
   return JSON.parse(response.text || "{}");
+};
+
+export const getEndGameAnalysis = async (stats: PlayerStats, history: GameLog[]) => {
+  const prompt = `Review this Nigerian's journey of ${stats.currentWeek} weeks. Net Assets: ₦${stats.balance + stats.savings - stats.debt}. Evaluate their performance with wit and wisdom.`;
+  const response = await ai.models.generateContent({
+    model: 'gemini-3-flash-preview',
+    contents: prompt,
+    config: { systemInstruction: "You are a wise Nigerian financial mentor." }
+  });
+  return response.text || "You fought well against Sapa!";
 };
