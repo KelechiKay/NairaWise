@@ -1,11 +1,24 @@
 
 export interface PlayerStats {
+  name: string;
+  age: number;
+  salary: number;
   balance: number;
   savings: number;
   debt: number;
   happiness: number;
   currentWeek: number;
   job: string;
+  city: string;
+  challenge: string;
+}
+
+export interface Goal {
+  id: string;
+  title: string;
+  target: number;
+  category: 'savings' | 'investment' | 'lifestyle';
+  completed: boolean;
 }
 
 export interface Stock {
@@ -58,6 +71,7 @@ export interface GameLog {
 
 export enum GameStatus {
   START = 'START',
+  SETUP = 'SETUP',
   PLAYING = 'PLAYING',
   GAMEOVER = 'GAMEOVER',
   LOADING = 'LOADING'

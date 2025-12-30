@@ -2,8 +2,7 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { PlayerStats, Scenario, GameLog } from "./types";
 
-const apiKey = (process.env as any).API_KEY || '';
-const ai = new GoogleGenAI({ apiKey });
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 export const getNextScenario = async (
   stats: PlayerStats,
@@ -12,10 +11,30 @@ export const getNextScenario = async (
   const historyContext = history.slice(-3).map(h => `Week ${h.week}: ${h.decision}`).join('\n');
 
   const prompt = `
-    Create a financial scenario for a Nigerian ${stats.job}.
-    Current Stats: Balance ₦${stats.balance}, Savings ₦${stats.savings}, Debt ₦${stats.debt}, Happiness ${stats.happiness}%.
-    Week: ${stats.currentWeek}.
-    Nigerian Context: Focus on Ajo, Sapa, investment opportunities, and family pressures.
+    Create a highly localized financial scenario for a Nigerian citizen.
+    
+    PLAYER PROFILE:
+    - Name: ${stats.name}
+    - Age: ${stats.age}
+    - Job: ${stats.job}
+    - Location: ${stats.city}
+    - Starting Challenge: ${stats.challenge}
+    - Monthly Income: ₦${stats.salary.toLocaleString()}
+    
+    CURRENT GAME STATE:
+    - Balance: ₦${stats.balance}
+    - Debt: ₦${stats.debt}
+    - Happiness: ${stats.happiness}%
+    - Game Week: ${stats.currentWeek}
+
+    GUIDELINES:
+    1. City Matters: If they are in Lagos, talk about Danfo traffic, Third Mainland bridge, or high rent. If in Kano, talk about market trading and lower costs.
+    2. Challenge Matters: If they have "Family Black Tax", include scenarios where relatives ask for money. If "Student Debt", include repayment pressures.
+    3. Slang: Use localized Nigerian slang (e.g., 'Eko for Show' for Lagos, 'Oya' for general action).
+    4. Difficulty: Scenarios should be harder if the salary is low relative to the city cost of living.
+    5. Stocks: Occasionally trigger marketEvents for: 'lagos-gas', 'kano-textiles', 'nairatech', 'obudu-agri'.
+
+    RESPONSE FORMAT: JSON only.
   `;
 
   const response = await ai.models.generateContent({
@@ -49,22 +68,22 @@ export const getNextScenario = async (
               },
               required: ["text", "consequence", "impact"]
             }
+          },
+          marketEvent: {
+            type: Type.OBJECT,
+            properties: {
+              headline: { type: Type.STRING },
+              impact: { type: Type.STRING },
+              stockId: { type: Type.STRING }
+            },
+            required: ["headline", "impact", "stockId"]
           }
         },
         required: ["title", "description", "choices", "imageTheme"]
       },
-      systemInstruction: "You are a witty Nigerian financial expert. Focus on immersive scenarios and realistic slang."
+      systemInstruction: "You are the 'Wise Oga' financial engine. Your goal is to teach financial literacy via immersive roleplay."
     }
   });
 
   return JSON.parse(response.text || "{}");
-};
-
-export const getEndGameAnalysis = async (stats: PlayerStats, history: GameLog[]) => {
-  const prompt = `Review performance: ₦${stats.balance} balance at Week ${stats.currentWeek}. Give a brief 'Wise Oga' review.`;
-  const response = await ai.models.generateContent({
-    model: 'gemini-3-flash-preview',
-    contents: prompt
-  });
-  return response.text || "Market is tough, keep pushing!";
 };
